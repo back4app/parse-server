@@ -14,7 +14,8 @@
     "views/",
     "LICENSE",
     "PATENTS",
-    "README.md"
+    "README.md",
+    ".babelrc"
   ],
   "license": "BSD-3-Clause",
   "dependencies": {
