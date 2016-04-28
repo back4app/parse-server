@@ -1,7 +1,7 @@
 'use strict';
 
 var Config = require('../src/Config');
-var Schema = require('../src/Schema');
+var SchemaController = require('../src/Controllers/SchemaController');
 var dd = require('deep-diff');
 
 var config = new Config('test');
@@ -19,7 +19,7 @@ var hasAllPODobject = () => {
   return obj;
 };
 
-describe('Schema', () => {
+describe('SchemaController', () => {
   it('can validate one object', (done) => {
     config.database.loadSchema().then((schema) => {
       return schema.validateObject('TestObject', {a: 1, b: 'yo', c: false});
@@ -121,39 +121,39 @@ describe('Schema', () => {
   });
 
   it('class-level permissions test get', (done) => {
-    var user;
     var obj;
-    createTestUser().then((u) => {
-      user = u;
-      return config.database.loadSchema();
-    }).then((schema) => {
-      // Just to create a valid class
-      return schema.validateObject('Stuff', {foo: 'bar'});
-    }).then((schema) => {
-      var find = {};
-      var get = {};
-      get[user.id] = true;
-      return schema.setPermissions('Stuff', {
-        'find': find,
-        'get': get
-      });
-    }).then((schema) => {
-      obj = new Parse.Object('Stuff');
-      obj.set('foo', 'bar');
-      return obj.save();
-    }).then((o) => {
-      obj = o;
-      var query = new Parse.Query('Stuff');
-      return query.find();
-    }).then((results) => {
-      fail('Class permissions should have rejected this query.');
-      done();
-    }, (e) => {
-      var query = new Parse.Query('Stuff');
-      return query.get(obj.id).then((o) => {
+    createTestUser()
+    .then(user => {
+      console.log(user);
+      return config.database.loadSchema()
+      // Create a valid class
+      .then(schema => schema.validateObject('Stuff', {foo: 'bar'}))
+      .then(schema => {
+        var find = {};
+        var get = {};
+        get[user.id] = true;
+        return schema.setPermissions('Stuff', {
+          'find': find,
+          'get': get
+        });
+      }).then((schema) => {
+        obj = new Parse.Object('Stuff');
+        obj.set('foo', 'bar');
+        return obj.save();
+      }).then((o) => {
+        obj = o;
+        var query = new Parse.Query('Stuff');
+        return query.find();
+      }).then((results) => {
+        fail('Class permissions should have rejected this query.');
         done();
       }, (e) => {
-        fail('Class permissions should have allowed this get query');
+        var query = new Parse.Query('Stuff');
+        return query.get(obj.id).then((o) => {
+          done();
+        }, (e) => {
+          fail('Class permissions should have allowed this get query');
+        });
       });
     });
   });
@@ -684,11 +684,13 @@ describe('Schema', () => {
       .then(() => schema.deleteField('relationField', 'NewClass', config.database))
       .then(() => schema.reloadData())
       .then(() => {
-        expect(schema['data']['NewClass']).toEqual({
-          objectId: 'string',
-          updatedAt: 'string',
-          createdAt: 'string'
-        });
+        const expectedSchema = {
+          objectId: { type: 'String' },
+          updatedAt: { type: 'Date' },
+          createdAt: { type: 'Date' },
+          ACL: { type: 'ACL' }
+        };
+        expect(dd(schema.data.NewClass, expectedSchema)).toEqual(undefined);
         done();
       });
     });
@@ -715,6 +717,10 @@ describe('Schema', () => {
         done();
         Parse.Object.enableSingleInstance();
       });
+    })
+    .catch(error => {
+      fail(error);
+      done();
     });
   });
 
@@ -745,9 +751,9 @@ describe('Schema', () => {
   });
 
   it('can merge schemas', done => {
-    expect(Schema.buildMergedSchemaObject({
+    expect(SchemaController.buildMergedSchemaObject({
       _id: 'SomeClass',
-      someType: 'number'
+      someType: { type: 'Number' }
     }, {
       newType: {type: 'Number'}
     })).toEqual({
@@ -758,10 +764,10 @@ describe('Schema', () => {
   });
 
   it('can merge deletions', done => {
-    expect(Schema.buildMergedSchemaObject({
+    expect(SchemaController.buildMergedSchemaObject({
       _id: 'SomeClass',
-      someType: 'number',
-      outDatedType: 'string',
+      someType: { type: 'Number' },
+      outDatedType: { type: 'String' },
     },{
       newType: {type: 'GeoPoint'},
       outDatedType: {__op: 'Delete'},
@@ -773,18 +779,18 @@ describe('Schema', () => {
   });
 
   it('ignore default field when merge with system class', done => {
-    expect(Schema.buildMergedSchemaObject({
+    expect(SchemaController.buildMergedSchemaObject({
       _id: '_User',
-      username: 'string',
-      password: 'string',
-      authData: 'object',
-      email: 'string',
-      emailVerified: 'boolean'
+      username: { type: 'String' },
+      password: { type: 'String' },
+      authData: { type: 'Object' },
+      email: { type: 'String' },
+      emailVerified: { type: 'Boolean' },
     },{
-      authData: {type: 'string'},
-      customField: {type: 'string'},
+      authData: { type: 'String' },
+      customField: { type: 'String' },
     })).toEqual({
-      customField: {type: 'string'}
+      customField: { type: 'String' }
     });
     done();
   });
