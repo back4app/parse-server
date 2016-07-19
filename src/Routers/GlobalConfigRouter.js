@@ -1,12 +1,11 @@
 // global_config.js
 
-import PromiseRouter from '../PromiseRouter';
+import PromiseRouter   from '../PromiseRouter';
 import * as middleware from "../middlewares";
 
 export class GlobalConfigRouter extends PromiseRouter {
   getGlobalConfig(req) {
-    let database = req.config.database.WithoutValidation();
-    return database.find('_GlobalConfig', { '_id': 1 }, { limit: 1 }).then((results) => {
+    return req.config.database.find('_GlobalConfig', { objectId: 1 }, { limit: 1 }).then((results) => {
       if (results.length != 1) {
         // If there is no config in the database - return empty config.
         return { response: { params: {} } };
@@ -23,10 +22,7 @@ export class GlobalConfigRouter extends PromiseRouter {
       acc[`params.${key}`] = params[key];
       return acc;
     }, {});
-    let database = req.config.database.WithoutValidation();
-    return database.update('_GlobalConfig', {_id: 1}, update, {upsert: true}).then(() => {
-      return Promise.resolve({ response: { result: true } });
-    });
+    return req.config.database.update('_GlobalConfig', {objectId: 1}, update, {upsert: true}).then(() => ({ response: { result: true } }));
   }
 
   mountRoutes() {

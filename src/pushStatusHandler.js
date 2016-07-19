@@ -1,5 +1,5 @@
 import { md5Hash, newObjectId } from './cryptoUtils';
-import { logger } from './logger';
+import { logger }               from './logger';
 
 const PUSH_STATUS_COLLECTION = '_PushStatus';
 
@@ -19,7 +19,7 @@ export default function pushStatusHandler(config) {
   let initialPromise;
   let pushStatus;
   let objectId = newObjectId();
-  let database = config.database.WithoutValidation();
+  let database = config.database;
 
   let setInitial = function(body = {}, where, options = {source: 'rest'}) {
     let now = new Date();
@@ -36,7 +36,7 @@ export default function pushStatusHandler(config) {
       expiry: body.expiration_time,
       status: "pending",
       numSent: 0,
-      pushHash: md5Hash(payloadString),
+      pushHash: md5Hash(data.alert || ''),
       // lockdown!
       ACL: {}
     }
@@ -96,7 +96,7 @@ export default function pushStatusHandler(config) {
       status: 'failed',
       updatedAt: new Date()
     }
-    logger.error('error while sending push', err);
+    logger.info('warning: error while sending push', err);
     return database.update(PUSH_STATUS_COLLECTION, { objectId }, update);
   }
 

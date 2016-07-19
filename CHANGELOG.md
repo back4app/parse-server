@@ -1,5 +1,103 @@
 ## Parse Server Changelog
 
+### 2.2.16 (7/10/2016)
+
+* New: Expose InMemoryCacheAdapter publicly, thanks to [Steven Shipton](https://github.com/steven-supersolid)
+* New: Add ability to prevent login with unverified email, thanks to [Diwakar Cherukumilli](https://github.com/cherukumilli)
+* Improved: Better error message for incorrect type, thanks to [Andrew Lane](https://github.com/AndrewLane)
+* Improved: Better error message for permission denied, thanks to [Blayne Chard](https://github.com/blacha)
+* Improved: Update authData on login, thanks to [Florent Vilmart](https://github.com/flovilmart)
+* Improved: Ability to not check for old files on Parse.com, thanks to [OzgeAkin](https://github.com/OzgeAkin)
+* Fix: Issues with email adapter validation, thanks to [Tyler Brock](https://github.com/TylerBrock)
+* Fix: Issues with nested $or queries, thanks to [Florent Vilmart](https://github.com/flovilmart)
+
+### 2.2.15 (6/30/2016)
+
+* Fix: Type in description for Parse.Error.INVALID_QUERY, thanks to [Andrew Lane](https://github.com/AndrewLane)
+* Improvement: Stop requiring verifyUserEmails for password reset functionality, thanks to [Tyler Brock](https://github.com/TylerBrock)
+* Improvement: Kill without validation, thanks to [Drew Gross](https://github.com/drew-gross)
+* Fix: Deleting a file does not delete from fs.files, thanks to [David Keita](https://github.com/maninga)
+* Fix: Postgres stoage adapter fix, thanks to [Vitaly Tomilov](https://github.com/vitaly-t)
+* Fix: Results invalid session when providing an invalid session token, thanks to [Florent Vilmart](https://github.com/flovilmart)
+* Fix: issue creating an anonymous user, thanks to [Hussam Moqhim](https://github.com/hmoqhim)
+* Fix: make http response serializable, thanks to [Florent Vilmart](https://github.com/flovilmart)
+* New: Add postmark email adapter alternative [Glenn Reyes](https://github.com/glennreyes)
+
+### 2.2.14 (6/25/2016)
+
+* Hotfix: Fix Parse.Cloud.HTTPResponse serialization
+
+### 2.2.13 (6/12/2016)
+
+* Hotfix: Pin version of deepcopy
+
+### 2.2.12 (6/9/2016)
+
+* New: Custom error codes in cloud code response.error, thanks to [Jeremy Pease](https://github.com/JeremyPlease)
+* Fix: Crash in beforeSave when response is not an object, thanks to [Tyler Brock](https://github.com/TylerBrock)
+* Fix: Allow "get" on installations
+* Fix: Fix overly restrictive Class Level Permissions, thanks to [Florent Vilmart](https://github.com/flovilmart)
+* Fix: Fix nested date parsing in Cloud Code, thanks to [Marco Cheung](https://github.com/Marco129)
+* Fix: Support very old file formats from Parse.com
+
+### 2.2.11 (5/31/2016)
+
+* Security: Censor user password in logs, thanks to [Marco Cheung](https://github.com/Marco129)
+* New: Add PARSE_SERVER_LOGS_FOLDER env var for setting log folder, thanks to [KartikeyaRokde](https://github.com/KartikeyaRokde)
+* New: Webhook key support, thanks to [Tyler Brock](https://github.com/TylerBrock)
+* Perf: Add cache adapter and default caching of certain objects, thanks to [Blayne Chard](https://github.com/blacha)
+* Improvement: Better error messages for schema type mismatches, thanks to [Jeremy Pease](https://github.com/JeremyPlease)
+* Improvement: Better error messages for reset password emails
+* Improvement: Webhook key support in CLI, thanks to [Tyler Brock](https://github.com/TylerBrock)
+* Fix: Remove read only fields when using beforeSave, thanks to [Tyler Brock](https://github.com/TylerBrock)
+* Fix: Use content type provided by JS SDK, thanks to [Blayne Chard](https://github.com/blacha) and [Florent Vilmart](https://github.com/flovilmart)
+* Fix: Tell the dashboard the stored push data is available, thanks to [Jeremy Pease](https://github.com/JeremyPlease)
+* Fix: Add support for HTTP Basic Auth, thanks to [Hussam Moqhim](https://github.com/hmoqhim)
+* Fix: Support for MongoDB version 3.2.6, (note: do not use MongoDB 3.2 with migrated apps that still have traffic on Parse.com), thanks to [Tyler Brock](https://github.com/TylerBrock)
+* Fix: Prevent `pm2` from crashing when push notifications fail, thanks to [benishak](https://github.com/benishak)
+* Fix: Add full list of default _Installation fields, thanks to [Jeremy Pease](https://github.com/JeremyPlease)
+* Fix: Strip objectId out of hooks responses, thanks to [Tyler Brock](https://github.com/TylerBrock)
+* Fix: Fix external webhook response format, thanks to [Tyler Brock](https://github.com/TylerBrock)
+* Fix: Fix beforeSave when object is passed to `success`, thanks to [Madhav Bhagat](https://github.com/codebreach)
+* Fix: Remove use of deprecated APIs, thanks to [Emad Ehsan](https://github.com/emadehsan)
+* Fix: Crash when multiple Parse Servers on the same machine try to write to the same logs folder, thanks to [Steven Shipton](https://github.com/steven-supersolid)
+* Fix: Various issues with key names in `Parse.Object`s
+* Fix: Treat Bytes type properly
+* Fix: Caching bugs that caused writes by masterKey or other session token to not show up to users reading with a different session token
+* Fix: Pin mongo driver version, preventing a regression in version 2.1.19
+* Fix: Various issues with pointer fields not being treated properly
+* Fix: Issues with pointed getting un-fetched due to changes in beforeSave
+* Fix: Fixed crash when deleting classes that have CLPs
+
+### 2.2.10 (5/15/2016)
+
+* Fix: Write legacy ACLs to Mongo so that clients that still go through Parse.com can read them, thanks to [Tyler Brock](https://github.com/TylerBrock) and [carmenlau](https://github.com/carmenlau)
+* Fix: Querying installations with limit = 0 and count = 1 now works, thanks to [ssk7833](https://github.com/ssk7833)
+* Fix: Return correct error when violating unique index, thanks to [Marco Cheung](https://github.com/Marco129)
+* Fix: Allow unsetting user's email, thanks to [Marco Cheung](https://github.com/Marco129)
+* New: Support for Node 6.1
+
+### 2.2.9 (5/9/2016)
+
+* Fix: Fix a regression that caused Parse Server to crash when a null parameter is passed to a Cloud function
+
+### 2.2.8 (5/8/2016)
+
+* New: Support for Pointer Permissions
+* New: Expose logger in Cloud Code
+* New: Option to revoke sessions on password reset
+* New: Option to expire inactive sessions
+* Perf: Improvements in ACL checking query
+* Fix: Issues when sending pushes to list of devices that contains invalid values
+* Fix: Issues caused by using babel-polyfill outside of Parse Server, but in the same express app
+* Fix: Remove creation of extra session tokens
+* Fix: Return authData when querying with master key
+* Fix: Bugs when deleting webhooks
+* Fix: Ignore _RevocableSession header, which might be sent by the JS SDK
+* Fix: Issues with querying via URL params
+* Fix: Properly encode "Date" parameters to cloud code functions
+
+
 ### 2.2.7 (4/15/2016)
 
 * Adds support for --verbose and verbose option when running ParseServer [\#1414](https://github.com/ParsePlatform/parse-server/pull/1414) ([flovilmart](https://github.com/flovilmart))
@@ -282,5 +380,3 @@
 * Fix: Various files related bugs
 * Fix: Force minimum node version 4.3 due to security issues in earlier version
 * Performance Improvement: Improved caching
-
-

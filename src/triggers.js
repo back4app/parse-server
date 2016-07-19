@@ -1,6 +1,6 @@
 // triggers.js
-import Parse from 'parse/node';
-import cache  from './cache';
+import Parse    from 'parse/node';
+import AppCache from './cache';
 
 export const Types = {
   beforeSave: 'beforeSave',
@@ -49,13 +49,17 @@ export function removeTrigger(type, className, applicationId) {
    delete _triggerStore[applicationId].Triggers[type][className]
 }
 
-export function _unregister(a,b,c,d) {
-  if (d) {
-    removeTrigger(c,d,a);
-    delete _triggerStore[a][b][c][d];
+export function _unregister(appId,category,className,type) {
+  if (type) {
+    removeTrigger(className,type,appId);
+    delete _triggerStore[appId][category][className][type];
   } else {
-    delete _triggerStore[a][b][c];
+    delete _triggerStore[appId][category][className];
   }
+}
+
+export function _unregisterAll() {
+  Object.keys(_triggerStore).forEach(appId => delete _triggerStore[appId]);
 }
 
 export function getTrigger(className, triggerType, applicationId) {
@@ -127,7 +131,8 @@ export function getResponseObject(request, resolve, reject) {
   return {
     success: function(response) {
       // Use the JSON response
-      if (response && request.triggerName === Types.beforeSave) {
+      if (response && !request.object.equals(response)
+          && request.triggerName === Types.beforeSave) {
         return resolve(response);
       }
       response = {};
@@ -136,8 +141,12 @@ export function getResponseObject(request, resolve, reject) {
       }
       return resolve(response);
     },
-    error: function(error) {
-      var scriptError = new Parse.Error(Parse.Error.SCRIPT_FAILED, error);
+    error: function(code, message) {
+      if (!message) {
+        message = code;
+        code = Parse.Error.SCRIPT_FAILED;
+      }
+      var scriptError = new Parse.Error(code, message);
       return reject(scriptError);
     }
   }

@@ -3,7 +3,6 @@ var LoggerController = require('../src/Controllers/LoggerController').LoggerCont
 var FileLoggerAdapter = require('../src/Adapters/Logger/FileLoggerAdapter').FileLoggerAdapter;
 
 describe("Cloud Code Logger", () => {
-
     it("should expose log to functions", (done) => {
         var logController = new LoggerController(new FileLoggerAdapter());
 
@@ -14,7 +13,6 @@ describe("Cloud Code Logger", () => {
         });
 
         Parse.Cloud.run('loggerTest').then(() => {
-            Parse.Cloud._removeHook('Functions', 'logTest');
             return logController.getLogs({from: Date.now() - 500, size: 1000});
         }).then((res) => {
             expect(res.length).not.toBe(0);
@@ -42,7 +40,6 @@ describe("Cloud Code Logger", () => {
 
         let obj = new Parse.Object('MyObject');
         obj.save().then(() => {
-            Parse.Cloud._removeHook('Triggers', 'beforeSave', 'MyObject');
             return logController.getLogs({from: Date.now() - 500, size: 1000})
         }).then((res) => {
             expect(res.length).not.toBe(0);
