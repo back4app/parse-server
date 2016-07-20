@@ -1479,4 +1479,68 @@ describe('miscellaneous', function() {
       done();
     });
   });
+
+  it('import objects from rest array', (done) => {
+    let headers = {
+      'Content-Type': 'application/json',
+      'X-Parse-Application-Id': 'test',
+      'X-Parse-Master-Key': 'test'
+    };
+    request.post(
+      {
+        headers: headers,
+        url: 'http://localhost:8378/1/import/TestObject',
+        body: JSON.stringify([
+          { column1: 'row1Column1', column2: 'row1Column2' },
+          { column1: 'row2Column1', column2: 'row2Column2' }
+        ])
+      },
+      (err) => {
+        expect(err).toBe(null);
+        let query = new Parse.Query('TestObject');
+        query.ascending('column1');
+        query.find().then((results) => {
+          expect(results.length).toEqual(2);
+          expect(results[0].get('column1')).toEqual('row1Column1');
+          expect(results[0].get('column2')).toEqual('row1Column2');
+          expect(results[1].get('column1')).toEqual('row2Column1');
+          expect(results[1].get('column2')).toEqual('row2Column2');
+          done();
+        });
+      }
+    );
+  });
+
+  it('import objects from json with results field', (done) => {
+    let headers = {
+      'Content-Type': 'application/json',
+      'X-Parse-Application-Id': 'test',
+      'X-Parse-Master-Key': 'test'
+    };
+    request.post(
+      {
+        headers: headers,
+        url: 'http://localhost:8378/1/import/TestObject',
+        body: JSON.stringify({
+          results: [
+            { column1: 'row1Column1', column2: 'row1Column2' },
+            { column1: 'row2Column1', column2: 'row2Column2' }
+          ]
+        })
+      },
+      (err) => {
+        expect(err).toBe(null);
+        let query = new Parse.Query('TestObject');
+        query.ascending('column1');
+        query.find().then((results) => {
+          expect(results.length).toEqual(2);
+          expect(results[0].get('column1')).toEqual('row1Column1');
+          expect(results[0].get('column2')).toEqual('row1Column2');
+          expect(results[1].get('column1')).toEqual('row2Column1');
+          expect(results[1].get('column2')).toEqual('row2Column2');
+          done();
+        });
+      }
+    );
+  });
 });

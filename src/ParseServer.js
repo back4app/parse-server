@@ -53,6 +53,7 @@ import { SessionsRouter }       from './Routers/SessionsRouter';
 import { UserController }       from './Controllers/UserController';
 import { UsersRouter }          from './Routers/UsersRouter';
 import { PurgeRouter }          from './Routers/PurgeRouter';
+import { ImportRouter }          from './Routers/ImportRouter';
 
 import DatabaseController       from './Controllers/DatabaseController';
 const SchemaController = require('./Controllers/SchemaController');
@@ -312,6 +313,7 @@ class ParseServer {
       new FeaturesRouter(),
       new GlobalConfigRouter(),
       new PurgeRouter(),
+      new ImportRouter(),
     ];
 
     if (process.env.PARSE_EXPERIMENTAL_HOOKS_ENABLED || process.env.TESTING) {
