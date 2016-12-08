@@ -241,12 +241,12 @@ describe("Email Verification Token Expiration: ", () => {
       return user.signUp();
     })
     .then(() => {
-      let config = new Config('test');
+      const config = new Config('test');
       return config.database.find('_User', {username: 'sets_email_verify_token_expires_at'});
     })
     .then(results => {
       expect(results.length).toBe(1);
-      let user = results[0];
+      const user = results[0];
       expect(typeof user).toBe('object');
       expect(user.emailVerified).toEqual(false);
       expect(typeof user._email_verify_token).toBe('string');
@@ -288,7 +288,7 @@ describe("Email Verification Token Expiration: ", () => {
         followRedirect: false,
       }, (error, response) => {
         expect(response.statusCode).toEqual(302);
-        let config = new Config('test');
+        const config = new Config('test');
         return config.database.find('_User', {username: 'unsets_email_verify_token_expires_at'}).then((results) => {
           expect(results.length).toBe(1);
           return results[0];
@@ -420,18 +420,18 @@ describe("Email Verification Token Expiration: ", () => {
 
   it('setting the email on the user should set a new email verification token and new expiration date for the token when expire email verify token flag is set', done => {
 
-    let user = new Parse.User();
+    const user = new Parse.User();
     let userBeforeEmailReset;
 
     let sendEmailOptions;
-    let emailAdapter = {
+    const emailAdapter = {
       sendVerificationEmail: options => {
         sendEmailOptions = options;
       },
       sendPasswordResetEmail: () => Promise.resolve(),
       sendMail: () => {}
     };
-    let serverConfig = {
+    const serverConfig = {
       appName: 'emailVerifyToken',
       verifyUserEmails: true,
       emailAdapter: emailAdapter,
@@ -447,7 +447,7 @@ describe("Email Verification Token Expiration: ", () => {
       return user.signUp();
     })
     .then(() => {
-      let config = new Config('test');
+      const config = new Config('test');
       return config.database.find('_User', {username: 'newEmailVerifyTokenOnEmailReset'}).then((results) => {
         return results[0];
       });
@@ -460,11 +460,11 @@ describe("Email Verification Token Expiration: ", () => {
       user.set('email', 'user@parse.com');
       return new Promise((resolve) => {
         // wait for half a sec to get a new expiration time
-        setTimeout( () => resolve(user.save()), 500 );
+        setTimeout(() => resolve(user.save()), 500);
       });
     })
     .then(() => {
-      let config = new Config('test');
+      const config = new Config('test');
       return config.database.find('_User', {username: 'newEmailVerifyTokenOnEmailReset'}).then((results) => {
         return results[0];
       });

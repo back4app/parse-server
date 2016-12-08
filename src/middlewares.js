@@ -144,8 +144,8 @@ export function handleParseHeaders(req, res, next) {
 
   return Promise.resolve().then(() => {
     // handle the upgradeToRevocableSession path on it's own
-    if (info.sessionToken && 
-        req.url === '/upgradeToRevocableSession' && 
+    if (info.sessionToken &&
+        req.url === '/upgradeToRevocableSession' &&
         info.sessionToken.indexOf('r:') != 0) {
       return auth.getAuthForLegacySessionToken({ config: req.config, installationId: info.installationId, sessionToken: info.sessionToken })
     } else {
@@ -274,7 +274,7 @@ export function enforceMasterKeyAccess(req, res, next) {
 
 export function promiseEnforceMasterKeyAccess(request) {
   if (!request.auth.isMaster) {
-    let error = new Error();
+    const error = new Error();
     error.status = 403;
     error.message = "unauthorized: master key is required";
     throw error;

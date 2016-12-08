@@ -14,16 +14,16 @@ export default class HTTPResponse {
       _data = body;
     }
 
-    let getText = () => {
+    const getText = () => {
       if (!_text && this.buffer) {
         _text = this.buffer.toString('utf-8');
       } else if (!_text && _data) {
         _text = JSON.stringify(_data);
       }
-      return _text; 
+      return _text;
     }
 
-    let getData = () => {
+    const getData = () => {
       if (!_data) {
         try {
           _data = JSON.parse(getText());

@@ -7,7 +7,7 @@ var batch = require('./batch'),
   Parse = require('parse/node').Parse,
   path = require('path'),
   url = require('url'),
-  authDataManager = require('./authDataManager');
+  authDataManager = require('./Adapters/Auth');
 
 import defaults                 from './defaults';
 import * as logging             from './logger';
@@ -73,8 +73,6 @@ addParseCloud();
 //          to register your cloud code hooks and functions.
 // "appId": the application id to host
 // "masterKey": the master key for requests to this app
-// "facebookAppIds": an array of valid Facebook Application IDs, required
-//                   if using Facebook login
 // "collectionPrefix": optional prefix for database collection names
 // "fileKey": optional key from Parse dashboard for supporting older files
 //            hosted by Parse
@@ -112,10 +110,11 @@ class ParseServer {
     restAPIKey,
     webhookKey,
     fileKey,
-    facebookAppIds = [],
+    userSensitiveFields = [],
     enableAnonymousUsers = defaults.enableAnonymousUsers,
     allowClientClassCreation = defaults.allowClientClassCreation,
     oauth = {},
+    auth = {},
     serverURL = requiredParameter('You must provide a serverURL!'),
     maxUploadSize = defaults.maxUploadSize,
     verifyUserEmails = defaults.verifyUserEmails,
@@ -155,6 +154,11 @@ class ParseServer {
       throw 'When using an explicit database adapter, you must also use an explicit filesAdapter.';
     }
 
+    userSensitiveFields = Array.from(new Set(userSensitiveFields.concat(
+      defaults.userSensitiveFields,
+      userSensitiveFields
+    )));
+
     const loggerControllerAdapter = loadAdapter(loggerAdapter, WinstonLoggerAdapter, { jsonLogs, logsFolder, verbose, logLevel, silent });
     const loggerController = new LoggerController(loggerControllerAdapter, appId);
     logging.setLogger(loggerController);
@@ -166,7 +170,7 @@ class ParseServer {
 
     // Pass the push options too as it works with the default
     const pushControllerAdapter = loadAdapter(push && push.adapter, ParsePushAdapter, push || {});
-    // We pass the options and the base class for the adatper,
+    // We pass the options and the base class for the adapter,
     // Note that passing an instance would work too
     const pushController = new PushController(pushControllerAdapter, appId, push);
 
@@ -183,7 +187,18 @@ class ParseServer {
     const databaseController = new DatabaseController(databaseAdapter, new SchemaCache(cacheController, schemaCacheTTL, enableSingleSchemaCache));
     const hooksController = new HooksController(appId, databaseController, webhookKey);
 
-    const dbInitPromise = databaseController.performInitizalization();
+    const dbInitPromise = databaseController.performInitialization();
+
+    if (Object.keys(oauth).length > 0) {
+      /* eslint-disable no-console */
+      console.warn('oauth option is deprecated and will be removed in a future release, please use auth option instead');
+      if (Object.keys(auth).length > 0) {
+        console.warn('You should use only the auth option.');
+      }
+      /* eslint-enable */
+    }
+
+    auth = Object.assign({}, oauth, auth);
 
     AppCache.put(appId, {
       appId,
@@ -196,7 +211,6 @@ class ParseServer {
       restAPIKey: restAPIKey,
       webhookKey: webhookKey,
       fileKey: fileKey,
-      facebookAppIds: facebookAppIds,
       analyticsController: analyticsController,
       cacheController: cacheController,
       filesController: filesController,
@@ -210,7 +224,7 @@ class ParseServer {
       accountLockout: accountLockout,
       passwordPolicy: passwordPolicy,
       allowClientClassCreation: allowClientClassCreation,
-      authDataManager: authDataManager(oauth, enableAnonymousUsers),
+      authDataManager: authDataManager(auth, enableAnonymousUsers),
       appName: appName,
       publicServerURL: publicServerURL,
       customPages: customPages,
@@ -222,13 +236,9 @@ class ParseServer {
       revokeSessionOnPasswordReset,
       databaseController,
       schemaCacheTTL,
-      enableSingleSchemaCache
+      enableSingleSchemaCache,
+      userSensitiveFields
     });
-
-    // To maintain compatibility. TODO: Remove in some version that breaks backwards compatability
-    if (process.env.FACEBOOK_APP_ID) {
-      AppCache.get(appId)['facebookAppIds'].push(process.env.FACEBOOK_APP_ID);
-    }
 
     Config.validate(AppCache.get(appId));
     this.config = AppCache.get(appId);
@@ -297,7 +307,7 @@ class ParseServer {
     api.use(middlewares.allowMethodOverride);
     api.use(middlewares.handleParseHeaders);
 
-    let appRouter = ParseServer.promiseRouter({ appId });
+    const appRouter = ParseServer.promiseRouter({ appId });
     api.use(appRouter.expressRouter());
 
     api.use(middlewares.handleParseErrors);
@@ -305,7 +315,7 @@ class ParseServer {
     //This causes tests to spew some useless warnings, so disable in test
     if (!process.env.TESTING) {
       process.on('uncaughtException', (err) => {
-        if ( err.code === "EADDRINUSE" ) { // user-friendly message for this common error
+        if (err.code === "EADDRINUSE") { // user-friendly message for this common error
           /* eslint-disable no-console */
           console.error(`Unable to listen on port ${err.port}. The port is already in use.`);
           /* eslint-enable no-console */
@@ -322,7 +332,7 @@ class ParseServer {
   }
 
   static promiseRouter({appId}) {
-    let routers = [
+    const routers = [
       new ClassesRouter(),
       new UsersRouter(),
       new SessionsRouter(),
@@ -341,11 +351,11 @@ class ParseServer {
       new CloudCodeRouter()
     ];
 
-    let routes = routers.reduce((memo, router) => {
+    const routes = routers.reduce((memo, router) => {
       return memo.concat(router.routes);
     }, []);
 
-    let appRouter = new PromiseRouter(routes, appId);
+    const appRouter = new PromiseRouter(routes, appId);
 
     batch.mountOnto(appRouter);
     return appRouter;

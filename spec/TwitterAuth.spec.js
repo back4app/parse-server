@@ -1,4 +1,4 @@
-let twitter = require('../src/authDataManager/twitter');
+const twitter = require('../src/Adapters/Auth/twitter');
 
 describe('Twitter Auth', () => {
   it('should use the proper configuration', () => {
@@ -10,9 +10,9 @@ describe('Twitter Auth', () => {
     }, {
       consumer_key: 'world'
     }]).consumer_key).toEqual('hello')
-    
+
     // Multiple options, consumer_key not found
-    expect(function(){ 
+    expect(function(){
       twitter.handleMultipleConfigurations({
         consumer_key: 'some',
       }, [{
@@ -23,7 +23,7 @@ describe('Twitter Auth', () => {
     }).toThrow();
 
     // Multiple options, consumer_key not found
-    expect(function(){ 
+    expect(function(){
       twitter.handleMultipleConfigurations({
         auth_token: 'token',
       }, [{
