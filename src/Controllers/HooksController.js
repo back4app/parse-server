@@ -170,7 +170,6 @@ function wrapToHTTPRequest(hook, key) {
       jsonBody.original.className = req.original.className;
     }
     let jsonRequest: any = {
-      method: 'POST',
       uri: hook.url,
       headers: {
         'Content-Type': 'application/json'
@@ -186,7 +185,7 @@ function wrapToHTTPRequest(hook, key) {
       logger.warn('Making outgoing webhook request without webhookKey being set!');
     }
 
-    request.post(hook.url, jsonRequest, function (err, httpResponse, body) {
+    request.post(jsonRequest, function (err, httpResponse, body) {
       var result;
       if (body) {
         if (typeof body === "string") {
