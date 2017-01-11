@@ -170,10 +170,14 @@ function wrapToHTTPRequest(hook, key) {
       jsonBody.original.className = req.original.className;
     }
     let jsonRequest: any = {
+      method: 'POST',
+      uri: hook.url,
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(jsonBody)
+      body: JSON.stringify(jsonBody),
+      timeout: 3000,
+      followAllRedirects: true
     };
 
     if (key) {
