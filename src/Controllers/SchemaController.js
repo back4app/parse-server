@@ -104,6 +104,11 @@ const defaultColumns = Object.freeze({
   _GlobalConfig: {
     "objectId": {type: 'String'},
     "params": {type: 'Object'}
+  },
+  _Audience: {
+    "objectId": {type:'String'},
+    "name":   {type:'String'},
+    "query": {type:'String'} //storing query as JSON string to prevent "Nested keys should not contain the '$' or '.' characters" error
   }
 });
 
@@ -112,9 +117,9 @@ const requiredColumns = Object.freeze({
   _Role: ["name", "ACL"]
 });
 
-const systemClasses = Object.freeze(['_User', '_Installation', '_Role', '_Session', '_Product', '_PushStatus', '_JobStatus']);
+const systemClasses = Object.freeze(['_User', '_Installation', '_Role', '_Session', '_Product', '_PushStatus', '_JobStatus', '_Audience']);
 
-const volatileClasses = Object.freeze(['_JobStatus', '_PushStatus', '_Hooks', '_GlobalConfig']);
+const volatileClasses = Object.freeze(['_JobStatus', '_PushStatus', '_Hooks', '_GlobalConfig', '_Audience']);
 
 // 10 alpha numberic chars + uppercase
 const userIdRegex = /^[a-zA-Z0-9]{10}$/;
@@ -370,12 +375,12 @@ export default class SchemaController {
         return Promise.resolve(allClasses);
       }
       return this._dbAdapter.getAllClasses()
-        .then(allSchemas => allSchemas.map(injectDefaultSchema))
-        .then(allSchemas => {
-          return this._cache.setAllClasses(allSchemas).then(() => {
-            return allSchemas;
-          });
-        })
+      .then(allSchemas => allSchemas.map(injectDefaultSchema))
+      .then(allSchemas => {
+        return this._cache.setAllClasses(allSchemas).then(() => {
+          return allSchemas;
+        });
+      })
     });
   }
 
@@ -703,7 +708,7 @@ export default class SchemaController {
         // If not - we are continuing to run logic, but already provided response from the server.
         return promise.then(() => {
           return Promise.reject(new Parse.Error(Parse.Error.INCORRECT_TYPE,
-            'there can only be one geopoint field in a class'));
+          'there can only be one geopoint field in a class'));
         });
       }
       if (!expected) {
@@ -742,7 +747,7 @@ export default class SchemaController {
     if (missingColumns.length > 0) {
       throw new Parse.Error(
         Parse.Error.INCORRECT_TYPE,
-        missingColumns[0]+' is required.');
+      missingColumns[0]+' is required.');
     }
     return Promise.resolve(this);
   }
@@ -802,7 +807,7 @@ export default class SchemaController {
     // Reject create when write lockdown
     if (permissionField == 'writeUserFields' && operation == 'create') {
       throw new Parse.Error(Parse.Error.OPERATION_FORBIDDEN,
-        `Permission denied for action ${operation} on class ${className}.`);
+      `Permission denied for action ${operation} on class ${className}.`);
     }
 
     // Process the readUserFields later
@@ -810,7 +815,7 @@ export default class SchemaController {
       return Promise.resolve();
     }
     throw new Parse.Error(Parse.Error.OPERATION_FORBIDDEN,
-        `Permission denied for action ${operation} on class ${className}.`);
+    `Permission denied for action ${operation} on class ${className}.`);
   }
 
   // Returns the expected type for a className+key combination
@@ -881,23 +886,23 @@ function thenValidateRequiredColumns(schemaPromise, className, object, query) {
 function getType(obj) {
   const type = typeof obj;
   switch(type) {
-  case 'boolean':
-    return 'Boolean';
-  case 'string':
-    return 'String';
-  case 'number':
-    return 'Number';
-  case 'map':
-  case 'object':
-    if (!obj) {
-      return undefined;
-    }
-    return getObjectType(obj);
-  case 'function':
-  case 'symbol':
-  case 'undefined':
-  default:
-    throw 'bad obj: ' + obj;
+    case 'boolean':
+      return 'Boolean';
+    case 'string':
+      return 'String';
+    case 'number':
+      return 'Number';
+    case 'map':
+    case 'object':
+      if (!obj) {
+        return undefined;
+      }
+      return getObjectType(obj);
+    case 'function':
+    case 'symbol':
+    case 'undefined':
+    default:
+      throw 'bad obj: ' + obj;
   }
 }
 
@@ -910,42 +915,42 @@ function getObjectType(obj) {
   }
   if (obj.__type){
     switch(obj.__type) {
-    case 'Pointer' :
-      if(obj.className) {
-        return {
-          type: 'Pointer',
-          targetClass: obj.className
+      case 'Pointer' :
+        if(obj.className) {
+          return {
+            type: 'Pointer',
+            targetClass: obj.className
+          }
         }
-      }
-      break;
-    case 'Relation' :
-      if(obj.className) {
-        return {
-          type: 'Relation',
-          targetClass: obj.className
+        break;
+      case 'Relation' :
+        if(obj.className) {
+          return {
+            type: 'Relation',
+            targetClass: obj.className
+          }
         }
-      }
-      break;
-    case 'File' :
-      if(obj.name) {
-        return 'File';
-      }
-      break;
-    case 'Date' :
-      if(obj.iso) {
-        return 'Date';
-      }
-      break;
-    case 'GeoPoint' :
-      if(obj.latitude != null && obj.longitude != null) {
-        return 'GeoPoint';
-      }
-      break;
-    case 'Bytes' :
-      if(obj.base64) {
-        return;
-      }
-      break;
+        break;
+      case 'File' :
+        if(obj.name) {
+          return 'File';
+        }
+        break;
+      case 'Date' :
+        if(obj.iso) {
+          return 'Date';
+        }
+        break;
+      case 'GeoPoint' :
+        if(obj.latitude != null && obj.longitude != null) {
+          return 'GeoPoint';
+        }
+        break;
+      case 'Bytes' :
+        if(obj.base64) {
+          return;
+        }
+        break;
     }
     throw new Parse.Error(Parse.Error.INCORRECT_TYPE, "This is not a valid "+obj.__type);
   }
@@ -954,24 +959,24 @@ function getObjectType(obj) {
   }
   if (obj.__op) {
     switch(obj.__op) {
-    case 'Increment':
-      return 'Number';
-    case 'Delete':
-      return null;
-    case 'Add':
-    case 'AddUnique':
-    case 'Remove':
-      return 'Array';
-    case 'AddRelation':
-    case 'RemoveRelation':
-      return {
-        type: 'Relation',
-        targetClass: obj.objects[0].className
-      }
-    case 'Batch':
-      return getObjectType(obj.ops[0]);
-    default:
-      throw 'unexpected op: ' + obj.__op;
+      case 'Increment':
+        return 'Number';
+      case 'Delete':
+        return null;
+      case 'Add':
+      case 'AddUnique':
+      case 'Remove':
+        return 'Array';
+      case 'AddRelation':
+      case 'RemoveRelation':
+        return {
+          type: 'Relation',
+          targetClass: obj.objects[0].className
+        }
+      case 'Batch':
+        return getObjectType(obj.ops[0]);
+      default:
+        throw 'unexpected op: ' + obj.__op;
     }
   }
   return 'Object';
