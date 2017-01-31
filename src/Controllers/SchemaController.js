@@ -886,23 +886,23 @@ function thenValidateRequiredColumns(schemaPromise, className, object, query) {
 function getType(obj) {
   const type = typeof obj;
   switch(type) {
-    case 'boolean':
-      return 'Boolean';
-    case 'string':
-      return 'String';
-    case 'number':
-      return 'Number';
-    case 'map':
-    case 'object':
-      if (!obj) {
-        return undefined;
-      }
-      return getObjectType(obj);
-    case 'function':
-    case 'symbol':
-    case 'undefined':
-    default:
-      throw 'bad obj: ' + obj;
+  case 'boolean':
+    return 'Boolean';
+  case 'string':
+    return 'String';
+  case 'number':
+    return 'Number';
+  case 'map':
+  case 'object':
+    if (!obj) {
+      return undefined;
+    }
+    return getObjectType(obj);
+  case 'function':
+  case 'symbol':
+  case 'undefined':
+  default:
+    throw 'bad obj: ' + obj;
   }
 }
 
@@ -915,42 +915,42 @@ function getObjectType(obj) {
   }
   if (obj.__type){
     switch(obj.__type) {
-      case 'Pointer' :
-        if(obj.className) {
-          return {
-            type: 'Pointer',
-            targetClass: obj.className
-          }
+    case 'Pointer' :
+      if(obj.className) {
+        return {
+          type: 'Pointer',
+          targetClass: obj.className
         }
-        break;
-      case 'Relation' :
-        if(obj.className) {
-          return {
-            type: 'Relation',
-            targetClass: obj.className
-          }
+      }
+      break;
+    case 'Relation' :
+      if(obj.className) {
+        return {
+          type: 'Relation',
+          targetClass: obj.className
         }
-        break;
-      case 'File' :
-        if(obj.name) {
-          return 'File';
-        }
-        break;
-      case 'Date' :
-        if(obj.iso) {
-          return 'Date';
-        }
-        break;
-      case 'GeoPoint' :
-        if(obj.latitude != null && obj.longitude != null) {
-          return 'GeoPoint';
-        }
-        break;
-      case 'Bytes' :
-        if(obj.base64) {
-          return;
-        }
-        break;
+      }
+      break;
+    case 'File' :
+      if(obj.name) {
+        return 'File';
+      }
+      break;
+    case 'Date' :
+      if(obj.iso) {
+        return 'Date';
+      }
+      break;
+    case 'GeoPoint' :
+      if(obj.latitude != null && obj.longitude != null) {
+        return 'GeoPoint';
+      }
+      break;
+    case 'Bytes' :
+      if(obj.base64) {
+        return;
+      }
+      break;
     }
     throw new Parse.Error(Parse.Error.INCORRECT_TYPE, "This is not a valid "+obj.__type);
   }
@@ -959,24 +959,24 @@ function getObjectType(obj) {
   }
   if (obj.__op) {
     switch(obj.__op) {
-      case 'Increment':
-        return 'Number';
-      case 'Delete':
-        return null;
-      case 'Add':
-      case 'AddUnique':
-      case 'Remove':
-        return 'Array';
-      case 'AddRelation':
-      case 'RemoveRelation':
-        return {
-          type: 'Relation',
-          targetClass: obj.objects[0].className
-        }
-      case 'Batch':
-        return getObjectType(obj.ops[0]);
-      default:
-        throw 'unexpected op: ' + obj.__op;
+    case 'Increment':
+      return 'Number';
+    case 'Delete':
+      return null;
+    case 'Add':
+    case 'AddUnique':
+    case 'Remove':
+      return 'Array';
+    case 'AddRelation':
+    case 'RemoveRelation':
+      return {
+        type: 'Relation',
+        targetClass: obj.objects[0].className
+      }
+    case 'Batch':
+      return getObjectType(obj.ops[0]);
+    default:
+      throw 'unexpected op: ' + obj.__op;
     }
   }
   return 'Object';
