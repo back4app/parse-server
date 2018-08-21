@@ -535,12 +535,12 @@ export class MongoStorageAdapter {
 
   createIndex(className, index) {
     return this._adaptiveCollection(className)
-      .then(collection => collection._mongoCollection.createIndex(index));
+      .then(collection => collection._mongoCollection.createIndex(index, {background: true}));
   }
 
   createIndexes(className, indexes) {
     return this._adaptiveCollection(className)
-      .then(collection => collection._mongoCollection.createIndexes(indexes));
+      .then(collection => collection._mongoCollection.createIndexes(indexes, {background: true}));
   }
 
   createIndexesIfNeeded(className, fieldName, type) {
