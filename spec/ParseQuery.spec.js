@@ -1387,7 +1387,7 @@ describe('Parse.Query testing', () => {
     query.find(expectError(Parse.Error.INVALID_QUERY, done));
   });
 
-  it("Use a regex that requires all modifiers", function(done) {
+  xit("Use a regex that requires all modifiers", function(done) {
     var thing = new TestObject();
     thing.set("myString", "PArSe\nCom");
     Parse.Object.saveAll([thing], function() {

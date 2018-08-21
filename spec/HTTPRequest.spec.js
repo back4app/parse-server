@@ -202,18 +202,21 @@ describe("httpRequest", () => {
   });
 
   it("should fail gracefully", (done) => {
+    const errorHandler = function(error) {
+      expect(error).not.toBeUndefined();
+      expect(error).not.toBeNull();
+      done();
+    };
+    const successHandler = function() {
+      fail("should not succeed");
+      done();
+    };
     httpRequest({
       url: "http://not a good url",
-      success: function() {
-        fail("should not succeed");
-        done();
-      },
-      error: function(error) {
-        expect(error).not.toBeUndefined();
-        expect(error).not.toBeNull();
-        done();
-      }
-    });
+      success: successHandler,
+      error: errorHandler,
+      timeout: 10
+    }).then(successHandler).catch(errorHandler);
   });
 
   it("should params object to query string", (done) => {
