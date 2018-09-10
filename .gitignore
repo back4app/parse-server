@@ -52,3 +52,5 @@ node_modules
 
 # Folder created by FileSystemAdapter
 /files
+
+*.orig
