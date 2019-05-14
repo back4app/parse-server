@@ -45,6 +45,145 @@ describe('Parse.Relation testing', () => {
       });
   });
 
+  it('simple add and remove relation through API', async () => {
+    const req = require('../lib/request');
+
+    const user = new Parse.User();
+    user.setUsername('someusername');
+    user.setPassword('somepassword');
+    await user.signUp();
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-Parse-Application-Id': 'test',
+      'X-Parse-REST-API-Key': 'rest',
+      'X-Parse-Session-Token': user.getSessionToken(),
+    };
+
+    const childResponse1 = await req({
+      method: 'POST',
+      url: 'http://localhost:8378/1/classes/ChildClass',
+      body: {
+        someChildField: 'someChildValue1',
+      },
+      headers,
+    });
+    expect(childResponse1.status).toEqual(201);
+
+    const childResponse2 = await req({
+      method: 'POST',
+      url: 'http://localhost:8378/1/classes/ChildClass',
+      body: {
+        someChildField: 'someChildValue2',
+      },
+      headers,
+    });
+    expect(childResponse2.status).toEqual(201);
+
+    const parentResponse = await req({
+      method: 'POST',
+      url: 'http://localhost:8378/1/classes/ParentClass',
+      body: {
+        someParentField: 'someParentValue',
+      },
+      headers,
+    });
+    expect(parentResponse.status).toEqual(201);
+
+    const addRelationResponse = await req({
+      method: 'PUT',
+      url: `http://localhost:8378/1/classes/ParentClass/${
+        parentResponse.data.objectId
+      }`,
+      body: {
+        children: {
+          __op: 'AddRelation',
+          objects: [
+            {
+              __type: 'Pointer',
+              className: 'ChildClass',
+              objectId: childResponse1.data.objectId,
+            },
+            {
+              __type: 'Pointer',
+              className: 'ChildClass',
+              objectId: childResponse2.data.objectId,
+            },
+          ],
+        },
+      },
+      headers,
+    });
+    expect(addRelationResponse.status).toEqual(200);
+
+    const parentQuery = new Parse.Query('ParentClass');
+    const parentObject = await parentQuery.get(parentResponse.data.objectId);
+    let children = await parentObject
+      .relation('children')
+      .query()
+      .find();
+    expect(children.map(child => child.get('someChildField')).sort()).toEqual([
+      'someChildValue1',
+      'someChildValue2',
+    ]);
+
+    const removeRelationResponse1 = await req({
+      method: 'PUT',
+      url: `http://localhost:8378/1/classes/ParentClass/${
+        parentResponse.data.objectId
+      }`,
+      body: {
+        children: {
+          __op: 'RemoveRelation',
+          objects: [
+            {
+              __type: 'Pointer',
+              className: 'ChildClass',
+              objectId: childResponse1.data.objectId,
+            },
+          ],
+        },
+      },
+      headers,
+    });
+    expect(removeRelationResponse1.status).toEqual(200);
+
+    children = await parentObject
+      .relation('children')
+      .query()
+      .find();
+    expect(children.map(child => child.get('someChildField')).sort()).toEqual([
+      'someChildValue2',
+    ]);
+
+    const removeRelationResponse2 = await req({
+      method: 'PUT',
+      url: `http://localhost:8378/1/classes/ParentClass/${
+        parentResponse.data.objectId
+      }`,
+      body: {
+        children: {
+          __op: 'RemoveRelation',
+          objects: [
+            {
+              __type: 'Pointer',
+              className: 'ChildClass',
+              objectId: childResponse2.data.objectId,
+            },
+          ],
+        },
+      },
+      headers,
+    });
+    expect(removeRelationResponse2.status).toEqual(200);
+
+    children = await parentObject
+      .relation('children')
+      .query()
+      .find();
+    expect(children.length).toEqual(0);
+  });
+
   it('query relation without schema', async () => {
     const ChildObject = Parse.Object.extend('ChildObject');
     const childObjects = [];
