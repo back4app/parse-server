@@ -57,7 +57,6 @@ const load = (parseGraphQLSchema, parseClass) => {
     async resolve(_source, args, context, queryInfo) {
       try {
         const {
-          where,
           order,
           skip,
           limit,
@@ -65,6 +64,7 @@ const load = (parseGraphQLSchema, parseClass) => {
           includeReadPreference,
           subqueryReadPreference,
         } = args;
+        let { where } = args;
         const { config, auth, info } = context;
         const selectedFields = getFieldNames(queryInfo);
 
@@ -74,6 +74,43 @@ const load = (parseGraphQLSchema, parseClass) => {
             .map(field => field.slice(field.indexOf('.') + 1))
         );
         const parseOrder = order && order.join(',');
+
+        if (where) {
+          let newConstraints = {};
+          Object.keys(where).forEach(field => {
+            if (
+              parseClass.fields[field] &&
+              parseClass.fields[field].type === 'Object'
+            ) {
+              const objectConstraints = where[field].reduce(
+                (acc, objectConstraint) => {
+                  const { key } = objectConstraint;
+                  const constraints = Object.entries(objectConstraint).filter(
+                    field => field[0] !== 'key'
+                  );
+                  if (constraints.length === 0) {
+                    throw new Error(`No constraints found for field ${field}`);
+                  }
+                  const constraint = constraints[0];
+                  return {
+                    ...acc,
+                    [`${field}.${key}`]: { [constraint[0]]: constraint[1] },
+                  };
+                },
+                {}
+              );
+              newConstraints = {
+                ...newConstraints,
+                ...objectConstraints,
+              };
+              delete where[field];
+            }
+          });
+          where = {
+            ...where,
+            ...newConstraints,
+          };
+        }
 
         return await objectsQueries.findObjects(
           className,

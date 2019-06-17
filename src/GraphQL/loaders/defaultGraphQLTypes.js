@@ -846,20 +846,30 @@ const ARRAY_CONSTRAINT = new GraphQLInputObjectType({
   },
 });
 
-const OBJECT_CONSTRAINT = new GraphQLInputObjectType({
-  name: 'ObjectConstraint',
-  description:
-    'The ObjectConstraint input type is used in operations that involve filtering objects by a field of type Object.',
-  fields: {
-    _eq: _eq(OBJECT),
-    _ne: _ne(OBJECT),
-    _in: _in(OBJECT),
-    _nin: _nin(OBJECT),
-    _exists,
-    _select,
-    _dontSelect,
-  },
-});
+const OBJECT_CONSTRAINT = new GraphQLList(
+  new GraphQLInputObjectType({
+    name: 'ObjectConstraint',
+    description:
+      'The ObjectConstraint input type is used in operations that involve filtering objects by a field of type Object.',
+    fields: {
+      key: {
+        description: 'The key used to retrieve the value from the object',
+        type: new GraphQLNonNull(GraphQLString),
+      },
+      _eq: _eq(ANY),
+      _ne: _ne(ANY),
+      _in: _in(ANY),
+      _nin: _nin(ANY),
+      _lt: _lt(ANY),
+      _lte: _lte(ANY),
+      _gt: _gt(ANY),
+      _gte: _gte(ANY),
+      _exists,
+      _select,
+      _dontSelect,
+    },
+  })
+);
 
 const DATE_CONSTRAINT = new GraphQLInputObjectType({
   name: 'DateConstraint',

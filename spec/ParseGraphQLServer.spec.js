@@ -4072,7 +4072,7 @@ describe('ParseGraphQLServer', () => {
         });
 
         it('should support object values', async () => {
-          const someFieldValue = { foo: 'bar' };
+          const someFieldValue = { foo: 'bar', lorem: 'ipsum', number: 10 };
 
           const createResult = await apolloClient.mutate({
             mutation: gql`
@@ -4115,10 +4115,13 @@ describe('ParseGraphQLServer', () => {
 
           const getResult = await apolloClient.query({
             query: gql`
-              query GetSomeObject($objectId: ID!) {
+              query GetSomeObject(
+                $objectId: ID!
+                $where: SomeClassConstraints
+              ) {
                 objects {
                   get(className: "SomeClass", objectId: $objectId)
-                  findSomeClass(where: { someField: { _exists: true } }) {
+                  findSomeClass(where: $where) {
                     results {
                       objectId
                     }
@@ -4128,6 +4131,13 @@ describe('ParseGraphQLServer', () => {
             `,
             variables: {
               objectId: createResult.data.objects.create.objectId,
+              where: {
+                someField: [
+                  { key: 'foo', _eq: 'bar' },
+                  { key: 'lorem', _eq: 'ipsum' },
+                  { key: 'number', _gt: 9 },
+                ],
+              },
             },
           });
 
@@ -4183,10 +4193,13 @@ describe('ParseGraphQLServer', () => {
 
           const getResult = await apolloClient.query({
             query: gql`
-              query GetSomeObject($objectId: ID!) {
+              query GetSomeObject(
+                $objectId: ID!
+                $where: SomeClassConstraints
+              ) {
                 objects {
                   get(className: "SomeClass", objectId: $objectId)
-                  findSomeClass(where: { someField: { _exists: true } }) {
+                  findSomeClass(where: $where) {
                     results {
                       objectId
                       someField
@@ -4197,6 +4210,13 @@ describe('ParseGraphQLServer', () => {
             `,
             variables: {
               objectId: createResult.data.objects.create.objectId,
+              where: {
+                someField: {
+                  _eq: {
+                    lorem: 'ipsum',
+                  },
+                },
+              },
             },
           });
 
