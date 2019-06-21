@@ -4133,9 +4133,9 @@ describe('ParseGraphQLServer', () => {
               objectId: createResult.data.objects.create.objectId,
               where: {
                 someField: [
-                  { key: 'foo', _eq: 'bar' },
-                  { key: 'lorem', _eq: 'ipsum' },
-                  { key: 'number', _gt: 9 },
+                  { _eq: { key: 'foo', value: 'bar' } },
+                  { _eq: { key: 'lorem', value: 'ipsum' } },
+                  { _gt: { key: 'number', value: 9 } },
                 ],
               },
             },

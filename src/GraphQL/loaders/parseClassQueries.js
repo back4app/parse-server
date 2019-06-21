@@ -84,17 +84,17 @@ const load = (parseGraphQLSchema, parseClass) => {
             ) {
               const objectConstraints = where[field].reduce(
                 (acc, objectConstraint) => {
-                  const { key } = objectConstraint;
                   const constraints = Object.entries(objectConstraint).filter(
                     field => field[0] !== 'key'
                   );
                   if (constraints.length === 0) {
                     throw new Error(`No constraints found for field ${field}`);
                   }
-                  const constraint = constraints[0];
+                  const constraint = constraints[0]; // _eq, _gt, etc
+                  const { key, value } = constraint[1]; // the object entry <key, value>
                   return {
                     ...acc,
-                    [`${field}.${key}`]: { [constraint[0]]: constraint[1] },
+                    [`${field}.${key}`]: { [constraint[0]]: value },
                   };
                 },
                 {}
