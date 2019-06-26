@@ -36,9 +36,10 @@ import { AudiencesRouter } from './Routers/AudiencesRouter';
 import { AggregateRouter } from './Routers/AggregateRouter';
 import { ExportRouter } from './Routers/ExportRouter';
 import { ImportRouter } from './Routers/ImportRouter';
-
 import { ParseServerRESTController } from './ParseServerRESTController';
 import * as controllers from './Controllers';
+import { ParseGraphQLServer } from './GraphQL/ParseGraphQLServer';
+
 // Mutate the Parse object to add the Cloud Code handlers
 addParseCloud();
 
@@ -153,10 +154,10 @@ class ParseServer {
     // It's the equivalent of https://api.parse.com/1 in the hosted Parse API.
     var api = express();
     //api.use("/apps", express.static(__dirname + "/public"));
+    api.use(middlewares.allowCrossDomain);
     // File handling needs to be before default middlewares are applied
     api.use(
       '/',
-      middlewares.allowCrossDomain,
       new FilesRouter().expressRouter({
         maxUploadSize: maxUploadSize,
       })
@@ -174,13 +175,8 @@ class ParseServer {
       new PublicAPIRouter().expressRouter()
     );
 
-    api.use(
-      '/',
-      middlewares.allowCrossDomain,
-      new ImportRouter().expressRouter()
-    );
+    api.use('/', new ImportRouter().expressRouter());
     api.use(bodyParser.json({ type: '*/*', limit: maxUploadSize }));
-    api.use(middlewares.allowCrossDomain);
     api.use(middlewares.allowMethodOverride);
     api.use(middlewares.handleParseHeaders);
 
@@ -273,6 +269,22 @@ class ParseServer {
     }
 
     app.use(options.mountPath, this.app);
+
+    if (options.mountGraphQL === true || options.mountPlayground === true) {
+      const parseGraphQLServer = new ParseGraphQLServer(this, {
+        graphQLPath: options.graphQLPath,
+        playgroundPath: options.playgroundPath,
+      });
+
+      if (options.mountGraphQL) {
+        parseGraphQLServer.applyGraphQL(app);
+      }
+
+      if (options.mountPlayground) {
+        parseGraphQLServer.applyPlayground(app);
+      }
+    }
+
     const server = app.listen(options.port, options.host, callback);
     this.server = server;
 

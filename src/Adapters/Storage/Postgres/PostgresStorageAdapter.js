@@ -1396,9 +1396,7 @@ export class PostgresStorageAdapter implements StorageAdapter {
     if (Object.keys(query).length === 0) {
       where.pattern = 'TRUE';
     }
-    const qs = `WITH deleted AS (DELETE FROM $1:name WHERE ${
-      where.pattern
-    } RETURNING *) SELECT count(*) FROM deleted`;
+    const qs = `WITH deleted AS (DELETE FROM $1:name WHERE ${where.pattern} RETURNING *) SELECT count(*) FROM deleted`;
     debug(qs, values);
     return this._client
       .one(qs, values, a => +a.count)
@@ -2443,7 +2441,8 @@ function createLiteralRegex(remaining) {
   return remaining
     .split('')
     .map(c => {
-      if (c.match(/[0-9a-zA-Z]/) !== null) {
+      const regex = RegExp('[0-9 ]|\\p{L}', 'u'); // Support all unicode letter chars
+      if (c.match(regex) !== null) {
         // don't escape alphanumeric characters
         return c;
       }

@@ -34,7 +34,8 @@ export class Config {
         );
         config.database = new DatabaseController(
           cacheInfo.databaseController.adapter,
-          schemaCache
+          schemaCache,
+          cacheInfo.skipMongoDBServer13732Workaround
         );
       } else {
         config[key] = cacheInfo[key];
@@ -327,9 +328,7 @@ export class Config {
   }
 
   get requestResetPasswordURL() {
-    return `${this.publicServerURL}/apps/${
-      this.applicationId
-    }/request_password_reset`;
+    return `${this.publicServerURL}/apps/${this.applicationId}/request_password_reset`;
   }
 
   get passwordResetSuccessURL() {

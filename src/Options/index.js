@@ -58,6 +58,10 @@ export interface ParseServerOptions {
   databaseOptions: ?any;
   /* Adapter module for the database */
   databaseAdapter: ?Adapter<StorageAdapter>;
+  /* Circumvent Parse workaround for historical MongoDB bug SERVER-13732
+  :ENV: PARSE_SKIP_MONGODB_SERVER_13732_WORKAROUND
+  :DEFAULT: false */
+  skipMongoDBServer13732Workaround: ?boolean;
   /* Full path to your cloud code main.js */
   cloud: ?string;
   /* A collection prefix for the classes
@@ -176,6 +180,22 @@ export interface ParseServerOptions {
   startLiveQueryServer: ?boolean;
   /* Live query server configuration options (will start the liveQuery server) */
   liveQueryServerOptions: ?LiveQueryServerOptions;
+  /* Mounts the GraphQL endpoint
+  :ENV: PARSE_SERVER_MOUNT_GRAPHQL
+  :DEFAULT: false */
+  mountGraphQL: ?boolean;
+  /* Mount path for the GraphQL endpoint, defaults to /graphql
+  :ENV: PARSE_SERVER_GRAPHQL_PATH
+  :DEFAULT: /graphql */
+  graphQLPath: ?string;
+  /* Mounts the GraphQL Playground - never use this option in production
+  :ENV: PARSE_SERVER_MOUNT_PLAYGROUND
+  :DEFAULT: false */
+  mountPlayground: ?boolean;
+  /* Mount path for the GraphQL Playground, defaults to /playground
+  :ENV: PARSE_SERVER_PLAYGROUND_PATH
+  :DEFAULT: /playground */
+  playgroundPath: ?string;
 
   serverStartComplete: ?(error: ?Error) => void;
 }
@@ -185,10 +205,18 @@ export interface CustomPagesOptions {
   invalidLink: ?string;
   /* verify email success page path */
   verifyEmailSuccess: ?string;
+  /* invalid verification link page path */
+  invalidVerificationLink: ?string;
+  /* verification link send success page path */
+  linkSendSuccess: ?string;
+  /* verification link send fail page path */
+  linkSendFail: ?string;
   /* choose password page path */
   choosePassword: ?string;
   /* password reset success page path */
   passwordResetSuccess: ?string;
+  /* for masking user-facing pages */
+  parseFrameURL: ?string;
 }
 
 export interface LiveQueryOptions {
