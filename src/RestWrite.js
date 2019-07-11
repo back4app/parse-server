@@ -452,17 +452,10 @@ RestWrite.prototype.handleAuthData = function(authData) {
   let results;
   return this.findUsersWithAuthData(authData).then(async r => {
     results = this.filteredObjectsByACL(r);
-    if (results.length > 1) {
-      // More than 1 user with the passed id's
-      throw new Parse.Error(
-        Parse.Error.ACCOUNT_ALREADY_LINKED,
-        'this auth is already used'
-      );
-    }
 
-    this.storage['authProvider'] = Object.keys(authData).join(',');
+    if (results.length == 1) {
+      this.storage['authProvider'] = Object.keys(authData).join(',');
 
-    if (results.length > 0) {
       const userResult = results[0];
       const mutatedAuthData = {};
       Object.keys(authData).forEach(provider => {
@@ -546,7 +539,15 @@ RestWrite.prototype.handleAuthData = function(authData) {
         }
       }
     }
-    return this.handleAuthDataValidation(authData);
+    return this.handleAuthDataValidation(authData).then(() => {
+      if (results.length > 1) {
+        // More than 1 user with the passed id's
+        throw new Parse.Error(
+          Parse.Error.ACCOUNT_ALREADY_LINKED,
+          'this auth is already used'
+        );
+      }
+    });
   });
 };
 
@@ -804,7 +805,8 @@ RestWrite.prototype.createSessionTokenIfNeeded = function() {
   if (this.className !== '_User') {
     return;
   }
-  if (this.query) {
+  // Don't generate session for updating user (this.query is set) unless authData exists
+  if (this.query && !this.data.authData) {
     return;
   }
   if (
