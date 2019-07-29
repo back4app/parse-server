@@ -322,6 +322,7 @@ describe('SchemaController', () => {
           classLevelPermissions: {
             find: { '*': true },
             get: { '*': true },
+            count: { '*': true },
             create: { '*': true },
             update: { '*': true },
             delete: { '*': true },
@@ -341,6 +342,7 @@ describe('SchemaController', () => {
     const levelPermissions = {
       find: { '*': true },
       get: { '*': true },
+      count: { '*': true },
       create: { '*': true },
       update: { '*': true },
       delete: { '*': true },
@@ -472,6 +474,7 @@ describe('SchemaController', () => {
           classLevelPermissions: {
             find: { '*': true },
             get: { '*': true },
+            count: { '*': true },
             create: { '*': true },
             update: { '*': true },
             delete: { '*': true },
@@ -501,7 +504,7 @@ describe('SchemaController', () => {
       schema
         .addClassIfNotExists('_InvalidName', { foo: { type: 'String' } })
         .catch(error => {
-          expect(error.error).toEqual(
+          expect(error.message).toEqual(
             'Invalid classname: _InvalidName, classnames can only have alphanumeric characters and _, and must start with an alpha character '
           );
           done();
@@ -519,7 +522,7 @@ describe('SchemaController', () => {
       )
       .catch(error => {
         expect(error.code).toEqual(Parse.Error.INVALID_KEY_NAME);
-        expect(error.error).toEqual('invalid field name: 0InvalidName');
+        expect(error.message).toEqual('invalid field name: 0InvalidName');
         done();
       });
   });
@@ -532,7 +535,7 @@ describe('SchemaController', () => {
       )
       .catch(error => {
         expect(error.code).toEqual(136);
-        expect(error.error).toEqual('field objectId cannot be added');
+        expect(error.message).toEqual('field objectId cannot be added');
         done();
       });
   });
@@ -547,7 +550,7 @@ describe('SchemaController', () => {
       )
       .catch(error => {
         expect(error.code).toEqual(136);
-        expect(error.error).toEqual('field localeIdentifier cannot be added');
+        expect(error.message).toEqual('field localeIdentifier cannot be added');
         done();
       });
   });
@@ -562,7 +565,7 @@ describe('SchemaController', () => {
       )
       .catch(error => {
         expect(error.code).toEqual(Parse.Error.INVALID_JSON);
-        expect(error.error).toEqual('invalid JSON');
+        expect(error.message).toEqual('invalid JSON');
         done();
       });
   });
@@ -577,7 +580,7 @@ describe('SchemaController', () => {
       )
       .catch(error => {
         expect(error.code).toEqual(135);
-        expect(error.error).toEqual('type Pointer needs a class name');
+        expect(error.message).toEqual('type Pointer needs a class name');
         done();
       });
   });
@@ -592,7 +595,7 @@ describe('SchemaController', () => {
       )
       .catch(error => {
         expect(error.code).toEqual(Parse.Error.INVALID_JSON);
-        expect(error.error).toEqual('invalid JSON');
+        expect(error.message).toEqual('invalid JSON');
         done();
       });
   });
@@ -607,7 +610,7 @@ describe('SchemaController', () => {
       )
       .catch(error => {
         expect(error.code).toEqual(135);
-        expect(error.error).toEqual('type Relation needs a class name');
+        expect(error.message).toEqual('type Relation needs a class name');
         done();
       });
   });
@@ -622,7 +625,7 @@ describe('SchemaController', () => {
       )
       .catch(error => {
         expect(error.code).toEqual(Parse.Error.INVALID_JSON);
-        expect(error.error).toEqual('invalid JSON');
+        expect(error.message).toEqual('invalid JSON');
         done();
       });
   });
@@ -637,7 +640,7 @@ describe('SchemaController', () => {
       )
       .catch(error => {
         expect(error.code).toEqual(Parse.Error.INVALID_CLASS_NAME);
-        expect(error.error).toEqual(
+        expect(error.message).toEqual(
           'Invalid classname: not a valid class name, classnames can only have alphanumeric characters and _, and must start with an alpha character '
         );
         done();
@@ -654,7 +657,7 @@ describe('SchemaController', () => {
       )
       .catch(error => {
         expect(error.code).toEqual(Parse.Error.INVALID_CLASS_NAME);
-        expect(error.error).toEqual(
+        expect(error.message).toEqual(
           'Invalid classname: not a valid class name, classnames can only have alphanumeric characters and _, and must start with an alpha character '
         );
         done();
@@ -671,7 +674,7 @@ describe('SchemaController', () => {
       )
       .catch(error => {
         expect(error.code).toEqual(Parse.Error.INCORRECT_TYPE);
-        expect(error.error).toEqual('invalid field type: Unknown');
+        expect(error.message).toEqual('invalid field type: Unknown');
         done();
       });
   });
@@ -787,6 +790,7 @@ describe('SchemaController', () => {
           classLevelPermissions: {
             find: { '*': true },
             get: { '*': true },
+            count: { '*': true },
             create: { '*': true },
             update: { '*': true },
             delete: { '*': true },
@@ -833,6 +837,7 @@ describe('SchemaController', () => {
           classLevelPermissions: {
             find: { '*': true },
             get: { '*': true },
+            count: { '*': true },
             create: { '*': true },
             update: { '*': true },
             delete: { '*': true },
@@ -865,6 +870,7 @@ describe('SchemaController', () => {
           classLevelPermissions: {
             find: { '*': true },
             get: { '*': true },
+            count: { '*': true },
             create: { '*': true },
             update: { '*': true },
             delete: { '*': true },
@@ -899,6 +905,7 @@ describe('SchemaController', () => {
           classLevelPermissions: {
             find: { '*': true },
             get: { '*': true },
+            count: { '*': true },
             create: { '*': true },
             update: { '*': true },
             delete: { '*': true },
@@ -922,7 +929,7 @@ describe('SchemaController', () => {
       )
       .catch(error => {
         expect(error.code).toEqual(Parse.Error.INCORRECT_TYPE);
-        expect(error.error).toEqual(
+        expect(error.message).toEqual(
           'currently, only one GeoPoint field may exist in an object. Adding geo2 when geo1 already exists.'
         );
         done();
@@ -1088,6 +1095,7 @@ describe('SchemaController', () => {
             classLevelPermissions: {
               find: { '*': true },
               get: { '*': true },
+              count: { '*': true },
               create: { '*': true },
               update: { '*': true },
               delete: { '*': true },

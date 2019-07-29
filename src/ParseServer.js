@@ -5,7 +5,9 @@ var batch = require('./batch'),
   express = require('express'),
   middlewares = require('./middlewares'),
   Parse = require('parse/node').Parse,
-  path = require('path');
+  { parse } = require('graphql'),
+  path = require('path'),
+  fs = require('fs');
 
 import { ParseServerOptions, LiveQueryServerOptions } from './Options';
 import defaults from './defaults';
@@ -19,6 +21,7 @@ import { FeaturesRouter } from './Routers/FeaturesRouter';
 import { FilesRouter } from './Routers/FilesRouter';
 import { FunctionsRouter } from './Routers/FunctionsRouter';
 import { GlobalConfigRouter } from './Routers/GlobalConfigRouter';
+import { GraphQLRouter } from './Routers/GraphQLRouter';
 import { HooksRouter } from './Routers/HooksRouter';
 import { IAPValidationRouter } from './Routers/IAPValidationRouter';
 import { InstallationsRouter } from './Routers/InstallationsRouter';
@@ -232,6 +235,7 @@ class ParseServer {
       new IAPValidationRouter(),
       new FeaturesRouter(),
       new GlobalConfigRouter(),
+      new GraphQLRouter(),
       new PurgeRouter(),
       new HooksRouter(),
       new CloudCodeRouter(),
@@ -271,9 +275,17 @@ class ParseServer {
     app.use(options.mountPath, this.app);
 
     if (options.mountGraphQL === true || options.mountPlayground === true) {
+      let graphQLCustomTypeDefs = undefined;
+      if (options.graphQLSchema) {
+        graphQLCustomTypeDefs = parse(
+          fs.readFileSync(options.graphQLSchema, 'utf8')
+        );
+      }
+
       const parseGraphQLServer = new ParseGraphQLServer(this, {
         graphQLPath: options.graphQLPath,
         playgroundPath: options.playgroundPath,
+        graphQLCustomTypeDefs,
       });
 
       if (options.mountGraphQL) {
