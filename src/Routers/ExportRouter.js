@@ -44,11 +44,6 @@ export class ExportRouter extends PromiseRouter {
                 delete obj[key];
               }
             });
-            // If class is _User, adds a random password in order to avoid
-            // "ParseError: 201 password is required" when importing
-            if (className === '_User') {
-              obj.password = uuidv4();
-            }
             return obj;
           }),
         };
