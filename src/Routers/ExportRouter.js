@@ -4,7 +4,6 @@ import rest from '../rest';
 import archiver from 'archiver';
 import tmp from 'tmp';
 import fs from 'fs';
-import uuidv4 from 'uuid/v4';
 
 const DefaultExportExportProgressCollectionName = '_ExportProgress';
 const relationSchema = {
