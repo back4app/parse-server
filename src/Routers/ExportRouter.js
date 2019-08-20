@@ -11,7 +11,7 @@ const relationSchema = {
 };
 
 export class ExportRouter extends PromiseRouter {
-  exportClassPage(req, name, jsonFileStream, where, skip, limit) {
+  exportClassPage(req, className, jsonFileStream, where, skip, limit) {
     const databaseController = req.config.database;
 
     const options = {
@@ -20,13 +20,32 @@ export class ExportRouter extends PromiseRouter {
     };
 
     const findPromise =
-      name.indexOf('_Join') === 0
-        ? databaseController.adapter.find(name, relationSchema, where, options)
-        : rest.find(req.config, req.auth, name, where, options);
+      className.indexOf('_Join') === 0
+        ? databaseController.adapter.find(
+          className,
+          relationSchema,
+          where,
+          options
+        )
+        : rest.find(req.config, req.auth, className, where, options);
 
     return findPromise.then(data => {
       if (Array.isArray(data)) {
-        data = { results: data };
+        data = {
+          results: data.map(obj => {
+            // Needed to avoid errors during import.
+            // See more: https://docs.parseplatform.org/js/guide/#error-codes
+
+            // Deletes invalid keys in order to avoid "ParseError: 105 Invalid field name"
+            // when importing
+            Object.keys(obj).forEach(key => {
+              if (key.startsWith('_')) {
+                delete obj[key];
+              }
+            });
+            return obj;
+          }),
+        };
       }
 
       if (skip && data.results.length) {
@@ -190,9 +209,7 @@ export class ExportRouter extends PromiseRouter {
       })
       .then(fileData => {
         return emailControllerAdapter.sendMail({
-          text: `We have successfully exported your data from the class ${
-            req.body.name
-          }.\n
+          text: `We have successfully exported your data from the class ${req.body.name}.\n
         Please download from ${fileData.url}`,
           link: fileData.url,
           to: req.body.feedbackEmail,
@@ -201,9 +218,7 @@ export class ExportRouter extends PromiseRouter {
       })
       .catch(error => {
         return emailControllerAdapter.sendMail({
-          text: `We could not export your data to the class ${
-            req.body.name
-          }. Error: ${error}`,
+          text: `We could not export your data to the class ${req.body.name}. Error: ${error}`,
           to: req.body.feedbackEmail,
           subject: 'Export failed',
         });
