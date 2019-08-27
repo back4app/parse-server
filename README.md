@@ -1,23 +1,47 @@
-![Parse Server logo](https://github.com/parse-community/parse-server/raw/master/.github/parse-server-logo.png)
+<p align="center">
+    <img alt="Parse Server" src="https://github.com/parse-community/parse-server/raw/master/.github/parse-server-logo.png" width="500">
+  </a>
+</p>
 
-[![Backers on Open Collective](https://opencollective.com/parse-server/backers/badge.svg)](#backers) [![Sponsors on Open Collective](https://opencollective.com/parse-server/sponsors/badge.svg)](#sponsors)
-[![Build Status](https://img.shields.io/travis/parse-community/parse-server/master.svg?style=flat)](https://travis-ci.org/parse-community/parse-server)
-[![Coverage Status](https://img.shields.io/codecov/c/github/parse-community/parse-server/master.svg)](https://codecov.io/github/parse-community/parse-server?branch=master)
-[![npm version](https://img.shields.io/npm/v/parse-server.svg?style=flat)](https://www.npmjs.com/package/parse-server)
-[![Join The Conversation](https://img.shields.io/discourse/https/community.parseplatform.org/topics.svg)](https://community.parseplatform.org/c/parse-server)
-[![Greenkeeper badge](https://badges.greenkeeper.io/parse-community/parse-server.svg)](https://greenkeeper.io/)
-[![Twitter Follow](https://img.shields.io/twitter/follow/ParsePlatform.svg?label=Follow%20us%20on%20Twitter&style=social)](https://twitter.com/intent/follow?screen_name=ParsePlatform)
+<p align="center">
+  Parse Server is an open source backend that can be deployed to any infrastructure that can run Node.js.
+</p>
 
-[![](https://img.shields.io/badge/mongodb-3.2-green.svg?logo=mongodb&style=flat)]()
-[![](https://img.shields.io/badge/mongodb-3.4-green.svg?logo=mongodb&style=flat)]()
-[![](https://img.shields.io/badge/mongodb-3.6-green.svg?logo=mongodb&style=flat)]()
-[![](https://img.shields.io/badge/mongodb-4.0-green.svg?logo=mongodb&style=flat)]()
 
-Parse Server is an [open source version of the Parse backend](http://blog.parseplatform.org/announcements/introducing-parse-server-and-the-database-migration-tool/) that can be deployed to any infrastructure that can run Node.js.
+<p align="center">
+    <a href="https://twitter.com/intent/follow?screen_name=parseplatform"><img alt="Follow on Twitter" src="https://img.shields.io/twitter/follow/parseplatform?style=social&label=Follow"></a>
+  <a href="https://travis-ci.org/parse-community/parse-server"><img alt="Build status" src="https://img.shields.io/travis/parse-community/parse-server/master.svg?style=flat"></a>
+    <a href="https://codecov.io/github/parse-community/parse-server?branch=master"><img alt="Coverage status" src="https://img.shields.io/codecov/c/github/parse-community/parse-server/master.svg"></a>
+    <a href="https://www.npmjs.com/package/parse-server"><img alt="npm version" src="https://img.shields.io/npm/v/parse-server.svg?style=flat"></a>
+    <a href="https://community.parseplatform.org/"><img alt="Join the conversation" src="https://img.shields.io/discourse/https/community.parseplatform.org/topics.svg"></a>
+    <a href="https://greenkeeper.io/"><img alt="Greenkeeper badge" src="https://badges.greenkeeper.io/parse-community/parse-server.svg"></a>
+</p>
+
+<p align="center">
+    <img alt="MongoDB 3.2" src="https://img.shields.io/badge/mongodb-3.2-green.svg?logo=mongodb&style=flat">
+    <img alt="MongoDB 3.4" src="https://img.shields.io/badge/mongodb-3.4-green.svg?logo=mongodb&style=flat">
+    <img alt="MongoDB 3.6" src="https://img.shields.io/badge/mongodb-3.6-green.svg?logo=mongodb&style=flat">
+    <img alt="MongoDB 4.0" src="https://img.shields.io/badge/mongodb-4.0-green.svg?logo=mongodb&style=flat">
+</p>
+
+<h2 align="center">Our Sponsors</h2>
+<p align="center">
+    <p align="center">Our backers and sponsors help to ensure the quality and timely development of the Parse Platform.</p>
+  <details align="center">
+  <summary align="center"><b>🥉 Bronze Sponsors</b></summary>
+  <a href="https://opencollective.com/parse-server/sponsor/0/website" target="_blank"><img src="https://opencollective.com/parse-server/sponsor/0/avatar.svg"></a>
+  </details>
+
+</p>
+<p align="center">
+  <a href="#backers"><img alt="Backers on Open Collective" src="https://opencollective.com/parse-server/backers/badge.svg" /></a>
+  <a href="#sponsors"><img alt="Sponsors on Open Collective" src="https://opencollective.com/parse-server/sponsors/badge.svg" /></a>
+</p>
+<br>
 
 Parse Server works with the Express web application framework. It can be added to existing web applications, or run by itself.
 
-The full documentation for Parse Server is available in the [wiki](https://github.com/parse-community/parse-server/wiki). The [Parse Server guide](http://docs.parseplatform.org/parse-server/guide/) is a good place to get started. An [API reference](http://parseplatform.org/parse-server/api/) is also available. If you're interested in developing for Parse Server, the [Development guide](http://docs.parseplatform.org/parse-server/guide/#development-guide) will help you get set up.
+The full documentation for Parse Server is available in the [wiki](https://github.com/parse-community/parse-server/wiki). The [Parse Server guide](http://docs.parseplatform.org/parse-server/guide/) is a good place to get started. An [API reference](http://parseplatform.org/parse-server/api/) and [Cloud Code guide](https://docs.parseplatform.org/cloudcode/guide/) are also available. If you're interested in developing for Parse Server, the [Development guide](http://docs.parseplatform.org/parse-server/guide/#development-guide) will help you get set up.
 
 - [Getting Started](#getting-started)
     - [Running Parse Server](#running-parse-server)
@@ -38,7 +62,7 @@ The full documentation for Parse Server is available in the [wiki](https://githu
         - [Configuring File Adapters](#configuring-file-adapters)
         - [Logging](#logging)
 - [Live Queries](#live-queries)
-- [GraphQL](#graphql)
+- [GraphQL (beta)](#graphql-beta)
 - [Upgrading to 3.0.0](#upgrading-to-300)
 - [Support](#support)
 - [Ride the Bleeding Edge](#want-to-ride-the-bleeding-edge)
@@ -382,9 +406,11 @@ Live queries are meant to be used in real-time reactive applications, where just
 
 Take a look at [Live Query Guide](https://docs.parseplatform.org/parse-server/guide/#live-queries), [Live Query Server Setup Guide](https://docs.parseplatform.org/parse-server/guide/#scalability) and [Live Query Protocol Specification](https://github.com/parse-community/parse-server/wiki/Parse-LiveQuery-Protocol-Specification). You can setup a standalone server or multiple instances for scalability (recommended).
 
-# GraphQL
+# GraphQL (beta)
 
 [GraphQL](https://graphql.org/), developed by Facebook, is an open-source data query and manipulation language for APIs. In addition to the traditional REST API, Parse Server automatically generates a GraphQL API based on your current application schema. Parse Server also allows you to define your custom GraphQL queries and mutations, whose resolvers can be bound to your cloud code functions.
+
+⚠️ The Parse GraphQL ```beta``` implementation is fully functional but discussions are taking place on how to improve it. So new versions of Parse Server can bring breaking changes to the current API.
 
 ## Running
 

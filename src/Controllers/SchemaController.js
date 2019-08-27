@@ -131,6 +131,7 @@ const defaultColumns: { [string]: SchemaFields } = Object.freeze({
   _GlobalConfig: {
     objectId: { type: 'String' },
     params: { type: 'Object' },
+    masterKeyOnly: { type: 'Object' },
   },
   _GraphQLConfig: {
     objectId: { type: 'String' },
@@ -184,6 +185,8 @@ const volatileClasses = Object.freeze([
 const userIdRegex = /^[a-zA-Z0-9]{10}$/;
 // Anything that start with role
 const roleRegex = /^role:.*/;
+// Anything that starts with userField
+const pointerPermissionRegex = /^userField:.*/;
 // * permission
 const publicRegex = /^\*$/;
 
@@ -192,6 +195,7 @@ const requireAuthenticationRegex = /^requiresAuthentication$/;
 const permissionKeyRegex = Object.freeze([
   userIdRegex,
   roleRegex,
+  pointerPermissionRegex,
   publicRegex,
   requireAuthenticationRegex,
 ]);
@@ -246,9 +250,12 @@ function validateCLP(perms: ClassLevelPermissions, fields: SchemaFields) {
       } else {
         perms[operation].forEach(key => {
           if (
-            !fields[key] ||
-            fields[key].type != 'Pointer' ||
-            fields[key].targetClass != '_User'
+            !(
+              fields[key] &&
+              ((fields[key].type == 'Pointer' &&
+                fields[key].targetClass == '_User') ||
+                fields[key].type == 'Array')
+            )
           ) {
             throw new Parse.Error(
               Parse.Error.INVALID_JSON,
@@ -776,7 +783,11 @@ export default class SchemaController {
             })
             .then(results => {
               enforceFields = results.filter(result => !!result);
-              this.setPermissions(className, classLevelPermissions, newSchema);
+              return this.setPermissions(
+                className,
+                classLevelPermissions,
+                newSchema
+              );
             })
             .then(() =>
               this._dbAdapter.setIndexesWithSchemaFormat(
@@ -899,20 +910,39 @@ export default class SchemaController {
             error: 'field ' + fieldName + ' cannot be added',
           };
         }
-        const type = fields[fieldName];
-        const error = fieldTypeIsInvalid(type);
+        const fieldType = fields[fieldName];
+        const error = fieldTypeIsInvalid(fieldType);
         if (error) return { code: error.code, error: error.message };
-        if (type.defaultValue !== undefined) {
-          let defaultValueType = getType(type.defaultValue);
+        if (fieldType.defaultValue !== undefined) {
+          let defaultValueType = getType(fieldType.defaultValue);
           if (typeof defaultValueType === 'string') {
             defaultValueType = { type: defaultValueType };
+          } else if (
+            typeof defaultValueType === 'object' &&
+            fieldType.type === 'Relation'
+          ) {
+            return {
+              code: Parse.Error.INCORRECT_TYPE,
+              error: `The 'default value' option is not applicable for ${typeToString(
+                fieldType
+              )}`,
+            };
           }
-          if (!dbTypeMatchesObjectType(type, defaultValueType)) {
+          if (!dbTypeMatchesObjectType(fieldType, defaultValueType)) {
             return {
               code: Parse.Error.INCORRECT_TYPE,
               error: `schema mismatch for ${className}.${fieldName} default value; expected ${typeToString(
-                type
+                fieldType
               )} but got ${typeToString(defaultValueType)}`,
+            };
+          }
+        } else if (fieldType.required) {
+          if (typeof fieldType === 'object' && fieldType.type === 'Relation') {
+            return {
+              code: Parse.Error.INCORRECT_TYPE,
+              error: `The 'required' option is not applicable for ${typeToString(
+                fieldType
+              )}`,
             };
           }
         }
