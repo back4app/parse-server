@@ -93,10 +93,6 @@
     "nyc": "14.1.1",
     "prettier": "1.18.2"
   },
-  "resolutions": {
-    "graphql-upload": "8.0.7",
-    "graphql": "14.5.3"
-  },
   "scripts": {
     "definitions": "node ./resources/buildConfigDefinitions.js",
     "docs": "jsdoc -c ./jsdoc-conf.json",
