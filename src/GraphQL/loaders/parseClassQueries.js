@@ -2,7 +2,7 @@ import { GraphQLNonNull } from 'graphql';
 import getFieldNames from 'graphql-list-fields';
 import pluralize from 'pluralize';
 import * as defaultGraphQLTypes from './defaultGraphQLTypes';
-import * as objectsQueries from './objectsQueries';
+import * as objectsQueries from '../helpers/objectsQueries';
 import { ParseGraphQLClassConfig } from '../../Controllers/ParseGraphQLController';
 import { transformClassNameToGraphQL } from '../transformers/className';
 import { extractKeysAndInclude } from '../parseGraphQLUtils';
@@ -14,7 +14,8 @@ const getParseClassQueryConfig = function(
 };
 
 const getQuery = async (className, _source, args, context, queryInfo) => {
-  const { objectId, readPreference, includeReadPreference } = args;
+  const { id, options } = args;
+  const { readPreference, includeReadPreference } = options || {};
   const { config, auth, info } = context;
   const selectedFields = getFieldNames(queryInfo);
 
@@ -22,7 +23,7 @@ const getQuery = async (className, _source, args, context, queryInfo) => {
 
   return await objectsQueries.getObject(
     className,
-    objectId,
+    id,
     keys,
     include,
     readPreference,
@@ -57,9 +58,8 @@ const load = function(
     parseGraphQLSchema.addGraphQLQuery(getGraphQLQueryName, {
       description: `The ${getGraphQLQueryName} query can be used to get an object of the ${graphQLClassName} class by its id.`,
       args: {
-        objectId: defaultGraphQLTypes.OBJECT_ID_ATT,
-        readPreference: defaultGraphQLTypes.READ_PREFERENCE_ATT,
-        includeReadPreference: defaultGraphQLTypes.INCLUDE_READ_PREFERENCE_ATT,
+        id: defaultGraphQLTypes.OBJECT_ID_ATT,
+        options: defaultGraphQLTypes.READ_OPTIONS_ATT,
       },
       type: new GraphQLNonNull(
         classGraphQLOutputType || defaultGraphQLTypes.OBJECT
@@ -86,15 +86,12 @@ const load = function(
       ),
       async resolve(_source, args, context, queryInfo) {
         try {
+          const { where, order, skip, limit, options } = args;
           const {
-            where,
-            order,
-            skip,
-            limit,
             readPreference,
             includeReadPreference,
             subqueryReadPreference,
-          } = args;
+          } = options || {};
           const { config, auth, info } = context;
           const selectedFields = getFieldNames(queryInfo);
 
@@ -120,7 +117,8 @@ const load = function(
             config,
             auth,
             info,
-            selectedFields.map(field => field.split('.', 1)[0])
+            selectedFields.map(field => field.split('.', 1)[0]),
+            parseClass.fields
           );
         } catch (e) {
           parseGraphQLSchema.handleError(e);
