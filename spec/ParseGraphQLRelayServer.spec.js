@@ -13,7 +13,7 @@ const ApolloClient = require('apollo-client').default;
 const { getMainDefinition } = require('apollo-utilities');
 const { split } = require('apollo-link');
 const { InMemoryCache } = require('apollo-cache-inmemory');
-// const gql = require('graphql-tag');
+const gql = require('graphql-tag');
 
 describe('ParseGraphQLServer - Relay Style', () => {
   let parseServer;
@@ -76,10 +76,6 @@ describe('ParseGraphQLServer - Relay Style', () => {
         },
       },
     });
-
-    if (apolloClient) {
-      return;
-    }
   });
 
   afterAll(async () => {
@@ -87,122 +83,112 @@ describe('ParseGraphQLServer - Relay Style', () => {
     await httpServer.close();
   });
 
-  // describe('Object Identification', () => {
-  //   it('Class get custom method should return valid gobal id', async () => {
-  //     const obj = new Parse.Object('SomeClass');
-  //     obj.set('someField', 'some value');
-  //     await obj.save();
+  describe('Object Identification', () => {
+    it('Class get custom method should return valid gobal id', async () => {
+      const obj = new Parse.Object('SomeClass');
+      obj.set('someField', 'some value');
+      await obj.save();
 
-  //     const getResult = await apolloClient.query({
-  //       query: gql`
-  //         query GetSomeClass($objectId: ID!) {
-  //           objects {
-  //             getSomeClass(objectId: $objectId) {
-  //               id
-  //               objectId
-  //             }
-  //           }
-  //         }
-  //       `,
-  //       variables: {
-  //         objectId: obj.id,
-  //       },
-  //     });
+      const getResult = await apolloClient.query({
+        query: gql`
+          query GetSomeClass($id: ID!) {
+            someClass(id: $id) {
+              id
+              objectId
+            }
+          }
+        `,
+        variables: {
+          id: obj.id,
+        },
+      });
 
-  //     expect(getResult.data.objects.getSomeClass.objectId).toBe(obj.id);
+      expect(getResult.data.someClass.objectId).toBe(obj.id);
 
-  //     const nodeResult = await apolloClient.query({
-  //       query: gql`
-  //         query Node($id: ID!) {
-  //           node(id: $id) {
-  //             id
-  //             ... on SomeClassClass {
-  //               objectId
-  //               someField
-  //             }
-  //           }
-  //         }
-  //       `,
-  //       variables: {
-  //         id: getResult.data.objects.getSomeClass.id,
-  //       },
-  //     });
+      const nodeResult = await apolloClient.query({
+        query: gql`
+          query Node($id: ID!) {
+            node(id: $id) {
+              id
+              ... on SomeClass {
+                objectId
+                someField
+              }
+            }
+          }
+        `,
+        variables: {
+          id: getResult.data.someClass.id,
+        },
+      });
 
-  //     expect(nodeResult.data.node.id).toBe(
-  //       getResult.data.objects.getSomeClass.id
-  //     );
-  //     expect(nodeResult.data.node.objectId).toBe(obj.id);
-  //     expect(nodeResult.data.node.someField).toBe('some value');
-  //   });
+      expect(nodeResult.data.node.id).toBe(getResult.data.someClass.id);
+      expect(nodeResult.data.node.objectId).toBe(obj.id);
+      expect(nodeResult.data.node.someField).toBe('some value');
+    });
 
-  //   it('Class find custom method should return valid gobal id', async () => {
-  //     const obj1 = new Parse.Object('SomeClass');
-  //     obj1.set('someField', 'some value 1');
-  //     await obj1.save();
+    it('Class find custom method should return valid gobal id', async () => {
+      const obj1 = new Parse.Object('SomeClass');
+      obj1.set('someField', 'some value 1');
+      await obj1.save();
 
-  //     const obj2 = new Parse.Object('SomeClass');
-  //     obj2.set('someField', 'some value 2');
-  //     await obj2.save();
+      const obj2 = new Parse.Object('SomeClass');
+      obj2.set('someField', 'some value 2');
+      await obj2.save();
 
-  //     const findResult = await apolloClient.query({
-  //       query: gql`
-  //         query FindSomeClass {
-  //           objects {
-  //             findSomeClass(order: [createdAt_ASC]) {
-  //               results {
-  //                 id
-  //                 objectId
-  //               }
-  //             }
-  //           }
-  //         }
-  //       `,
-  //     });
+      const findResult = await apolloClient.query({
+        query: gql`
+          query FindSomeClass {
+            someClasses(order: [createdAt_ASC]) {
+              results {
+                id
+                objectId
+              }
+            }
+          }
+        `,
+      });
 
-  //     expect(findResult.data.objects.findSomeClass.results[0].objectId).toBe(
-  //       obj1.id
-  //     );
-  //     expect(findResult.data.objects.findSomeClass.results[1].objectId).toBe(
-  //       obj2.id
-  //     );
+      expect(findResult.data.someClasses.results[0].objectId).toBe(obj1.id);
+      expect(findResult.data.someClasses.results[1].objectId).toBe(obj2.id);
 
-  //     const nodeResult = await apolloClient.query({
-  //       query: gql`
-  //         query Node($id1: ID!, $id2: ID!) {
-  //           node1: node(id: $id1) {
-  //             id
-  //             ... on SomeClassClass {
-  //               objectId
-  //               someField
-  //             }
-  //           }
-  //           node2: node(id: $id2) {
-  //             id
-  //             ... on SomeClassClass {
-  //               objectId
-  //               someField
-  //             }
-  //           }
-  //         }
-  //       `,
-  //       variables: {
-  //         id1: findResult.data.objects.findSomeClass.results[0].id,
-  //         id2: findResult.data.objects.findSomeClass.results[1].id,
-  //       },
-  //     });
+      const nodeResult = await apolloClient.query({
+        query: gql`
+          query Node($id1: ID!, $id2: ID!) {
+            node1: node(id: $id1) {
+              id
+              ... on SomeClass {
+                objectId
+                someField
+              }
+            }
+            node2: node(id: $id2) {
+              id
+              ... on SomeClass {
+                objectId
+                someField
+              }
+            }
+          }
+        `,
+        variables: {
+          id1: findResult.data.someClasses.results[0].id,
+          id2: findResult.data.someClasses.results[1].id,
+        },
+      });
 
-  //     expect(nodeResult.data.node1.id).toBe(
-  //       findResult.data.objects.findSomeClass.results[0].id
-  //     );
-  //     expect(nodeResult.data.node1.objectId).toBe(obj1.id);
-  //     expect(nodeResult.data.node1.someField).toBe('some value 1');
-  //     expect(nodeResult.data.node2.id).toBe(
-  //       findResult.data.objects.findSomeClass.results[1].id
-  //     );
-  //     expect(nodeResult.data.node2.objectId).toBe(obj2.id);
-  //     expect(nodeResult.data.node2.someField).toBe('some value 2');
-  //   });
-  // });
+      expect(nodeResult.data.node1.id).toBe(
+        findResult.data.someClasses.results[0].id
+      );
+      expect(nodeResult.data.node1.objectId).toBe(obj1.id);
+      expect(nodeResult.data.node1.someField).toBe('some value 1');
+      expect(nodeResult.data.node2.id).toBe(
+        findResult.data.someClasses.results[1].id
+      );
+      expect(nodeResult.data.node2.objectId).toBe(obj2.id);
+      expect(nodeResult.data.node2.someField).toBe('some value 2');
+    });
+  });
 
   // describe('Mutations', () => {
   //   it('should create file with clientMutationId', async () => {

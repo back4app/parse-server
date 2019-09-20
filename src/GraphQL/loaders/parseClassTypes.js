@@ -7,6 +7,7 @@ import {
   GraphQLNonNull,
   GraphQLEnumType,
 } from 'graphql';
+import { globalIdField } from 'graphql-relay';
 import getFieldNames from 'graphql-list-fields';
 import * as defaultGraphQLTypes from './defaultGraphQLTypes';
 import * as objectsQueries from '../helpers/objectsQueries';
@@ -370,7 +371,18 @@ const load = (
   };
 
   const classGraphQLOutputTypeName = `${graphQLClassName}`;
+  const interfaces = [defaultGraphQLTypes.PARSE_OBJECT];
+  if (parseGraphQLSchema.graphQLSchemaIsRelayStyle) {
+    interfaces.push(parseGraphQLSchema.relayNodeInterface);
+  }
   const outputFields = () => {
+    let parseObjectFields = defaultGraphQLTypes.PARSE_OBJECT_FIELDS;
+    if (parseGraphQLSchema.graphQLSchemaIsRelayStyle) {
+      parseObjectFields = Object.assign({}, parseObjectFields, {
+        id: globalIdField(className, obj => obj.objectId),
+        objectId: parseObjectFields.id,
+      });
+    }
     return classOutputFields.reduce((fields, field) => {
       const type = transformOutputTypeToGraphQL(
         parseClass.fields[field].type,
@@ -492,12 +504,12 @@ const load = (
       } else {
         return fields;
       }
-    }, defaultGraphQLTypes.PARSE_OBJECT_FIELDS);
+    }, parseObjectFields);
   };
   let classGraphQLOutputType = new GraphQLObjectType({
     name: classGraphQLOutputTypeName,
     description: `The ${classGraphQLOutputTypeName} object type is used in operations that involve outputting objects of ${graphQLClassName} class.`,
-    interfaces: [defaultGraphQLTypes.PARSE_OBJECT],
+    interfaces,
     fields: outputFields,
   });
   classGraphQLOutputType = parseGraphQLSchema.addGraphQLType(
@@ -547,7 +559,7 @@ const load = (
     const viewerType = new GraphQLObjectType({
       name: 'Viewer',
       description: `The Viewer object type is used in operations that involve outputting the current user data.`,
-      interfaces: [defaultGraphQLTypes.PARSE_OBJECT],
+      interfaces,
       fields: () => ({
         ...outputFields(),
         sessionToken: defaultGraphQLTypes.SESSION_TOKEN_ATT,

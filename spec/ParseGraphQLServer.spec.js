@@ -856,21 +856,22 @@ describe('ParseGraphQLServer', () => {
             expect(queryFields).toContain('node');
           });
 
-          // it('should return global id', async () => {
-          //   const userFields = (await apolloClient.query({
-          //     query: gql`
-          //       query UserType {
-          //         __type(name: "_UserClass") {
-          //           fields {
-          //             name
-          //           }
-          //         }
-          //       }
-          //     `,
-          //   })).data['__type'].fields.map(field => field.name);
+          it('should return global id and object id', async () => {
+            const userFields = (await apolloClient.query({
+              query: gql`
+                query UserType {
+                  __type(name: "User") {
+                    fields {
+                      name
+                    }
+                  }
+                }
+              `,
+            })).data['__type'].fields.map(field => field.name);
 
-          //   expect(userFields).toContain('id');
-          // });
+            expect(userFields).toContain('id');
+            expect(userFields).toContain('objectId');
+          });
 
           // it('should have clientMutationId in create file input', async () => {
           //   const createFileInputFields = (await apolloClient.query({
@@ -1355,7 +1356,7 @@ describe('ParseGraphQLServer', () => {
         });
 
         describe('when relay style is disabled', () => {
-          it('should not Node interface', async () => {
+          it('should not have Node interface', async () => {
             const schemaTypes = (await apolloClient.query({
               query: gql`
                 query SchemaTypes {
@@ -1387,21 +1388,22 @@ describe('ParseGraphQLServer', () => {
             expect(queryFields).not.toContain('node');
           });
 
-          // it('should not return global id', async () => {
-          //   const userFields = (await apolloClient.query({
-          //     query: gql`
-          //       query UserType {
-          //         __type(name: "User") {
-          //           fields {
-          //             name
-          //           }
-          //         }
-          //       }
-          //     `,
-          //   })).data['__type'].fields.map(field => field.name);
+          it('should not return global id', async () => {
+            const userFields = (await apolloClient.query({
+              query: gql`
+                query UserType {
+                  __type(name: "User") {
+                    fields {
+                      name
+                    }
+                  }
+                }
+              `,
+            })).data['__type'].fields.map(field => field.name);
 
-          //   expect(userFields).not.toContain('id');
-          // });
+            expect(userFields).toContain('id');
+            expect(userFields).not.toContain('objectId');
+          });
 
           it('should not have create file input', async () => {
             const createFileInputType = (await apolloClient.query({
