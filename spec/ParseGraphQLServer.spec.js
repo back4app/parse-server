@@ -260,6 +260,7 @@ describe('ParseGraphQLServer', () => {
 
   describe('Auto API', () => {
     let httpServer;
+    let parseLiveQueryServer;
     const headers = {
       'X-Parse-Application-Id': 'test',
       'X-Parse-Javascript-Key': 'test',
@@ -412,7 +413,7 @@ describe('ParseGraphQLServer', () => {
       const expressApp = express();
       httpServer = http.createServer(expressApp);
       expressApp.use('/parse', parseServer.app);
-      ParseServer.createLiveQueryServer(httpServer, {
+      parseLiveQueryServer = ParseServer.createLiveQueryServer(httpServer, {
         port: 1338,
       });
       parseGraphQLServer.applyGraphQL(expressApp);
@@ -455,6 +456,7 @@ describe('ParseGraphQLServer', () => {
     });
 
     afterAll(async () => {
+      await parseLiveQueryServer.server.close();
       await httpServer.close();
     });
 
@@ -544,6 +546,13 @@ describe('ParseGraphQLServer', () => {
     });
 
     describe('Schema', () => {
+      const resetGraphQLCache = async () => {
+        await Promise.all([
+          parseGraphQLServer.parseGraphQLController.cacheController.graphQL.clear(),
+          parseGraphQLServer.parseGraphQLSchema.databaseController.schemaCache.clear(),
+        ]);
+      };
+
       describe('Default Types', () => {
         it('should have Object scalar type', async () => {
           const objectType = (await apolloClient.query({
@@ -800,6 +809,885 @@ describe('ParseGraphQLServer', () => {
             `,
           })).data['__type'].fields.map(field => field.name);
           expect(userFields.includes('password')).toBeFalsy();
+        });
+      });
+
+      describe('Relay Specific Types', () => {
+        describe('when relay style is enabled', () => {
+          beforeAll(async () => {
+            parseGraphQLServer.setRelayStyle(true);
+            await resetGraphQLCache();
+          });
+
+          afterAll(async () => {
+            parseGraphQLServer.setRelayStyle(false);
+            await resetGraphQLCache();
+          });
+
+          it('should have Node interface', async () => {
+            const schemaTypes = (await apolloClient.query({
+              query: gql`
+                query SchemaTypes {
+                  __schema {
+                    types {
+                      name
+                    }
+                  }
+                }
+              `,
+            })).data['__schema'].types.map(type => type.name);
+
+            expect(schemaTypes).toContain('Node');
+          });
+
+          it('should have node query', async () => {
+            const queryFields = (await apolloClient.query({
+              query: gql`
+                query UserType {
+                  __type(name: "Query") {
+                    fields {
+                      name
+                    }
+                  }
+                }
+              `,
+            })).data['__type'].fields.map(field => field.name);
+
+            expect(queryFields).toContain('node');
+          });
+
+          // it('should return global id', async () => {
+          //   const userFields = (await apolloClient.query({
+          //     query: gql`
+          //       query UserType {
+          //         __type(name: "_UserClass") {
+          //           fields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].fields.map(field => field.name);
+
+          //   expect(userFields).toContain('id');
+          // });
+
+          // it('should have clientMutationId in create file input', async () => {
+          //   const createFileInputFields = (await apolloClient.query({
+          //     query: gql`
+          //       query {
+          //         __type(name: "CreateFileInput") {
+          //           inputFields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].inputFields
+          //     .map(field => field.name)
+          //     .sort();
+
+          //   expect(createFileInputFields).toEqual(['clientMutationId', 'file']);
+          // });
+
+          // it('should have clientMutationId in create file payload', async () => {
+          //   const createFilePayloadFields = (await apolloClient.query({
+          //     query: gql`
+          //       query {
+          //         __type(name: "CreateFilePayload") {
+          //           fields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].fields
+          //     .map(field => field.name)
+          //     .sort();
+
+          //   expect(createFilePayloadFields).toEqual([
+          //     'clientMutationId',
+          //     'fileInfo',
+          //   ]);
+          // });
+
+          // it('should have clientMutationId in call function input', async () => {
+          //   const callFunctionInputFields = (await apolloClient.query({
+          //     query: gql`
+          //       query {
+          //         __type(name: "CallFunctionInput") {
+          //           inputFields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].inputFields
+          //     .map(field => field.name)
+          //     .sort();
+
+          //   expect(callFunctionInputFields).toEqual([
+          //     'clientMutationId',
+          //     'functionName',
+          //     'params',
+          //   ]);
+          // });
+
+          // it('should have clientMutationId in call function payload', async () => {
+          //   const callFunctionPayloadFields = (await apolloClient.query({
+          //     query: gql`
+          //       query {
+          //         __type(name: "CallFunctionPayload") {
+          //           fields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].fields
+          //     .map(field => field.name)
+          //     .sort();
+
+          //   expect(callFunctionPayloadFields).toEqual([
+          //     'clientMutationId',
+          //     'result',
+          //   ]);
+          // });
+
+          // it('should have clientMutationId in generic create object mutation input', async () => {
+          //   const createObjectInputFields = (await apolloClient.query({
+          //     query: gql`
+          //       query {
+          //         __type(name: "CreateObjectInput") {
+          //           inputFields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].inputFields
+          //     .map(field => field.name)
+          //     .sort();
+
+          //   expect(createObjectInputFields).toEqual([
+          //     'className',
+          //     'clientMutationId',
+          //     'fields',
+          //   ]);
+          // });
+
+          // it('should have clientMutationId in generic create object mutation payload', async () => {
+          //   const createObjectPayloadFields = (await apolloClient.query({
+          //     query: gql`
+          //       query {
+          //         __type(name: "CreateObjectPayload") {
+          //           fields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].fields
+          //     .map(field => field.name)
+          //     .sort();
+
+          //   expect(createObjectPayloadFields).toEqual([
+          //     'clientMutationId',
+          //     'result',
+          //   ]);
+          // });
+
+          // it('should have clientMutationId in custom create object mutation input', async () => {
+          //   const obj = new Parse.Object('SomeClass');
+          //   await obj.save();
+
+          //   await parseGraphQLServer.parseGraphQLSchema.databaseController.schemaCache.clear();
+
+          //   const createObjectInputFields = (await apolloClient.query({
+          //     query: gql`
+          //       query {
+          //         __type(name: "CreateSomeClassObjectInput") {
+          //           inputFields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].inputFields
+          //     .map(field => field.name)
+          //     .sort();
+
+          //   expect(createObjectInputFields).toEqual([
+          //     'clientMutationId',
+          //     'fields',
+          //   ]);
+          // });
+
+          // it('should have clientMutationId in custom create object mutation payload', async () => {
+          //   const obj = new Parse.Object('SomeClass');
+          //   await obj.save();
+
+          //   await parseGraphQLServer.parseGraphQLSchema.databaseController.schemaCache.clear();
+
+          //   const createObjectPayloadFields = (await apolloClient.query({
+          //     query: gql`
+          //       query {
+          //         __type(name: "CreateSomeClassObjectPayload") {
+          //           fields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].fields
+          //     .map(field => field.name)
+          //     .sort();
+
+          //   expect(createObjectPayloadFields).toEqual([
+          //     'clientMutationId',
+          //     'result',
+          //   ]);
+          // });
+
+          // it('should have clientMutationId in generic update object mutation input', async () => {
+          //   const updateObjectInputFields = (await apolloClient.query({
+          //     query: gql`
+          //       query {
+          //         __type(name: "UpdateObjectInput") {
+          //           inputFields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].inputFields
+          //     .map(field => field.name)
+          //     .sort();
+
+          //   expect(updateObjectInputFields).toEqual([
+          //     'className',
+          //     'clientMutationId',
+          //     'fields',
+          //     'objectId',
+          //   ]);
+          // });
+
+          // it('should have clientMutationId in generic update object mutation payload', async () => {
+          //   const updateObjectPayloadFields = (await apolloClient.query({
+          //     query: gql`
+          //       query {
+          //         __type(name: "UpdateObjectPayload") {
+          //           fields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].fields
+          //     .map(field => field.name)
+          //     .sort();
+
+          //   expect(updateObjectPayloadFields).toEqual([
+          //     'clientMutationId',
+          //     'result',
+          //   ]);
+          // });
+
+          // it('should have clientMutationId in custom update object mutation input', async () => {
+          //   const obj = new Parse.Object('SomeClass');
+          //   await obj.save();
+
+          //   await parseGraphQLServer.parseGraphQLSchema.databaseController.schemaCache.clear();
+
+          //   const updateObjectInputFields = (await apolloClient.query({
+          //     query: gql`
+          //       query {
+          //         __type(name: "UpdateSomeClassObjectInput") {
+          //           inputFields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].inputFields
+          //     .map(field => field.name)
+          //     .sort();
+
+          //   expect(updateObjectInputFields).toEqual([
+          //     'clientMutationId',
+          //     'fields',
+          //     'objectId',
+          //   ]);
+          // });
+
+          // it('should have clientMutationId in custom update object mutation payload', async () => {
+          //   const obj = new Parse.Object('SomeClass');
+          //   await obj.save();
+
+          //   await parseGraphQLServer.parseGraphQLSchema.databaseController.schemaCache.clear();
+
+          //   const updateObjectPayloadFields = (await apolloClient.query({
+          //     query: gql`
+          //       query {
+          //         __type(name: "UpdateSomeClassObjectPayload") {
+          //           fields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].fields
+          //     .map(field => field.name)
+          //     .sort();
+
+          //   expect(updateObjectPayloadFields).toEqual([
+          //     'clientMutationId',
+          //     'result',
+          //   ]);
+          // });
+
+          // it('should have clientMutationId in generic delete object mutation input', async () => {
+          //   const deleteObjectInputFields = (await apolloClient.query({
+          //     query: gql`
+          //       query {
+          //         __type(name: "DeleteObjectInput") {
+          //           inputFields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].inputFields
+          //     .map(field => field.name)
+          //     .sort();
+
+          //   expect(deleteObjectInputFields).toEqual([
+          //     'className',
+          //     'clientMutationId',
+          //     'objectId',
+          //   ]);
+          // });
+
+          // it('should have clientMutationId in generic delete object mutation payload', async () => {
+          //   const deleteObjectPayloadFields = (await apolloClient.query({
+          //     query: gql`
+          //       query {
+          //         __type(name: "DeleteObjectPayload") {
+          //           fields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].fields
+          //     .map(field => field.name)
+          //     .sort();
+
+          //   expect(deleteObjectPayloadFields).toEqual([
+          //     'clientMutationId',
+          //     'result',
+          //   ]);
+          // });
+
+          // it('should have clientMutationId in custom delete object mutation input', async () => {
+          //   const obj = new Parse.Object('SomeClass');
+          //   await obj.save();
+
+          //   await parseGraphQLServer.parseGraphQLSchema.databaseController.schemaCache.clear();
+
+          //   const deleteObjectInputFields = (await apolloClient.query({
+          //     query: gql`
+          //       query {
+          //         __type(name: "DeleteSomeClassObjectInput") {
+          //           inputFields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].inputFields
+          //     .map(field => field.name)
+          //     .sort();
+
+          //   expect(deleteObjectInputFields).toEqual([
+          //     'clientMutationId',
+          //     'objectId',
+          //   ]);
+          // });
+
+          // it('should have clientMutationId in custom delete object mutation payload', async () => {
+          //   const obj = new Parse.Object('SomeClass');
+          //   await obj.save();
+
+          //   await parseGraphQLServer.parseGraphQLSchema.databaseController.schemaCache.clear();
+
+          //   const deleteObjectPayloadFields = (await apolloClient.query({
+          //     query: gql`
+          //       query {
+          //         __type(name: "DeleteSomeClassObjectPayload") {
+          //           fields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].fields
+          //     .map(field => field.name)
+          //     .sort();
+
+          //   expect(deleteObjectPayloadFields).toEqual([
+          //     'clientMutationId',
+          //     'result',
+          //   ]);
+          // });
+
+          // it('should have clientMutationId in sign up mutation input', async () => {
+          //   const inputFields = (await apolloClient.query({
+          //     query: gql`
+          //       query {
+          //         __type(name: "SignUpInput") {
+          //           inputFields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].inputFields
+          //     .map(field => field.name)
+          //     .sort();
+
+          //   expect(inputFields).toEqual(['clientMutationId', 'fields']);
+          // });
+
+          // it('should have clientMutationId in sign up mutation payload', async () => {
+          //   const payloadFields = (await apolloClient.query({
+          //     query: gql`
+          //       query {
+          //         __type(name: "SignUpPayload") {
+          //           fields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].fields
+          //     .map(field => field.name)
+          //     .sort();
+
+          //   expect(payloadFields).toEqual(['clientMutationId', 'result']);
+          // });
+
+          // it('should have clientMutationId in log in mutation input', async () => {
+          //   const inputFields = (await apolloClient.query({
+          //     query: gql`
+          //       query {
+          //         __type(name: "LogInInput") {
+          //           inputFields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].inputFields
+          //     .map(field => field.name)
+          //     .sort();
+
+          //   expect(inputFields).toEqual([
+          //     'clientMutationId',
+          //     'password',
+          //     'username',
+          //   ]);
+          // });
+
+          // it('should have clientMutationId in log in mutation payload', async () => {
+          //   const payloadFields = (await apolloClient.query({
+          //     query: gql`
+          //       query {
+          //         __type(name: "LogInPayload") {
+          //           fields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].fields
+          //     .map(field => field.name)
+          //     .sort();
+
+          //   expect(payloadFields).toEqual(['clientMutationId', 'me']);
+          // });
+
+          // it('should have clientMutationId in log out mutation input', async () => {
+          //   const inputFields = (await apolloClient.query({
+          //     query: gql`
+          //       query {
+          //         __type(name: "LogOutInput") {
+          //           inputFields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].inputFields
+          //     .map(field => field.name)
+          //     .sort();
+
+          //   expect(inputFields).toEqual(['clientMutationId']);
+          // });
+
+          // it('should have clientMutationId in log out mutation payload', async () => {
+          //   const payloadFields = (await apolloClient.query({
+          //     query: gql`
+          //       query {
+          //         __type(name: "LogOutPayload") {
+          //           fields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].fields
+          //     .map(field => field.name)
+          //     .sort();
+
+          //   expect(payloadFields).toEqual(['clientMutationId', 'result']);
+          // });
+        });
+
+        describe('when relay style is disabled', () => {
+          it('should not Node interface', async () => {
+            const schemaTypes = (await apolloClient.query({
+              query: gql`
+                query SchemaTypes {
+                  __schema {
+                    types {
+                      name
+                    }
+                  }
+                }
+              `,
+            })).data['__schema'].types.map(type => type.name);
+
+            expect(schemaTypes).not.toContain('Node');
+          });
+
+          it('should not have node query', async () => {
+            const queryFields = (await apolloClient.query({
+              query: gql`
+                query UserType {
+                  __type(name: "Query") {
+                    fields {
+                      name
+                    }
+                  }
+                }
+              `,
+            })).data['__type'].fields.map(field => field.name);
+
+            expect(queryFields).not.toContain('node');
+          });
+
+          // it('should not return global id', async () => {
+          //   const userFields = (await apolloClient.query({
+          //     query: gql`
+          //       query UserType {
+          //         __type(name: "User") {
+          //           fields {
+          //             name
+          //           }
+          //         }
+          //       }
+          //     `,
+          //   })).data['__type'].fields.map(field => field.name);
+
+          //   expect(userFields).not.toContain('id');
+          // });
+
+          it('should not have create file input', async () => {
+            const createFileInputType = (await apolloClient.query({
+              query: gql`
+                query {
+                  __type(name: "CreateFileInput") {
+                    inputFields {
+                      name
+                    }
+                  }
+                }
+              `,
+            })).data['__type'];
+
+            expect(createFileInputType).toBeNull();
+          });
+
+          it('should not have create file payload', async () => {
+            const createFilePayloadType = (await apolloClient.query({
+              query: gql`
+                query {
+                  __type(name: "CreateFilePayload") {
+                    fields {
+                      name
+                    }
+                  }
+                }
+              `,
+            })).data['__type'];
+
+            expect(createFilePayloadType).toBeNull();
+          });
+
+          it('should not have call function input', async () => {
+            const callFunctionInputType = (await apolloClient.query({
+              query: gql`
+                query {
+                  __type(name: "CallFunctionInput") {
+                    inputFields {
+                      name
+                    }
+                  }
+                }
+              `,
+            })).data['__type'];
+
+            expect(callFunctionInputType).toBeNull();
+          });
+
+          it('should not have call function payload', async () => {
+            const callFunctionPayloadType = (await apolloClient.query({
+              query: gql`
+                query {
+                  __type(name: "CallFunctionPayload") {
+                    fields {
+                      name
+                    }
+                  }
+                }
+              `,
+            })).data['__type'];
+
+            expect(callFunctionPayloadType).toBeNull();
+          });
+
+          it('should not have create object input for custom mutation', async () => {
+            const obj = new Parse.Object('SomeClass');
+            await obj.save();
+
+            await parseGraphQLServer.parseGraphQLSchema.databaseController.schemaCache.clear();
+
+            const createObjectInputType = (await apolloClient.query({
+              query: gql`
+                query {
+                  __type(name: "CreateSomeClassObjectInput") {
+                    inputFields {
+                      name
+                    }
+                  }
+                }
+              `,
+            })).data['__type'];
+
+            expect(createObjectInputType).toBeNull();
+          });
+
+          it('should not have create object payload for custom mutation', async () => {
+            const obj = new Parse.Object('SomeClass');
+            await obj.save();
+
+            await parseGraphQLServer.parseGraphQLSchema.databaseController.schemaCache.clear();
+
+            const createObjectPayloadType = (await apolloClient.query({
+              query: gql`
+                query {
+                  __type(name: "CreateSomeClassObjectPayload") {
+                    fields {
+                      name
+                    }
+                  }
+                }
+              `,
+            })).data['__type'];
+
+            expect(createObjectPayloadType).toBeNull();
+          });
+
+          it('should not have update object input for custom mutation', async () => {
+            const obj = new Parse.Object('SomeClass');
+            await obj.save();
+
+            await parseGraphQLServer.parseGraphQLSchema.databaseController.schemaCache.clear();
+
+            const updateObjectInputType = (await apolloClient.query({
+              query: gql`
+                query {
+                  __type(name: "UpdateSomeClassObjectInput") {
+                    inputFields {
+                      name
+                    }
+                  }
+                }
+              `,
+            })).data['__type'];
+
+            expect(updateObjectInputType).toBeNull();
+          });
+
+          it('should not have update object payload for custom mutation', async () => {
+            const obj = new Parse.Object('SomeClass');
+            await obj.save();
+
+            await parseGraphQLServer.parseGraphQLSchema.databaseController.schemaCache.clear();
+
+            const updateObjectPayloadType = (await apolloClient.query({
+              query: gql`
+                query {
+                  __type(name: "UpdateSomeClassObjectPayload") {
+                    fields {
+                      name
+                    }
+                  }
+                }
+              `,
+            })).data['__type'];
+
+            expect(updateObjectPayloadType).toBeNull();
+          });
+
+          it('should not have delete object input for custom mutation', async () => {
+            const obj = new Parse.Object('SomeClass');
+            await obj.save();
+
+            await parseGraphQLServer.parseGraphQLSchema.databaseController.schemaCache.clear();
+
+            const deleteObjectInputType = (await apolloClient.query({
+              query: gql`
+                query {
+                  __type(name: "DeleteSomeClassObjectInput") {
+                    inputFields {
+                      name
+                    }
+                  }
+                }
+              `,
+            })).data['__type'];
+
+            expect(deleteObjectInputType).toBeNull();
+          });
+
+          it('should not have delete object payload for custom mutation', async () => {
+            const obj = new Parse.Object('SomeClass');
+            await obj.save();
+
+            await parseGraphQLServer.parseGraphQLSchema.databaseController.schemaCache.clear();
+
+            const deleteObjectPayloadType = (await apolloClient.query({
+              query: gql`
+                query {
+                  __type(name: "DeleteSomeClassObjectPayload") {
+                    fields {
+                      name
+                    }
+                  }
+                }
+              `,
+            })).data['__type'];
+
+            expect(deleteObjectPayloadType).toBeNull();
+          });
+
+          it('should not have sign up input', async () => {
+            const inputType = (await apolloClient.query({
+              query: gql`
+                query {
+                  __type(name: "SignUpInput") {
+                    inputFields {
+                      name
+                    }
+                  }
+                }
+              `,
+            })).data['__type'];
+
+            expect(inputType).toBeNull();
+          });
+
+          it('should not have sign up payload', async () => {
+            const payloadType = (await apolloClient.query({
+              query: gql`
+                query {
+                  __type(name: "SignUpPayload") {
+                    fields {
+                      name
+                    }
+                  }
+                }
+              `,
+            })).data['__type'];
+
+            expect(payloadType).toBeNull();
+          });
+
+          it('should not have log in input', async () => {
+            const inputType = (await apolloClient.query({
+              query: gql`
+                query {
+                  __type(name: "LogInInput") {
+                    inputFields {
+                      name
+                    }
+                  }
+                }
+              `,
+            })).data['__type'];
+
+            expect(inputType).toBeNull();
+          });
+
+          it('should not have log in payload', async () => {
+            const payloadType = (await apolloClient.query({
+              query: gql`
+                query {
+                  __type(name: "LogInPayload") {
+                    fields {
+                      name
+                    }
+                  }
+                }
+              `,
+            })).data['__type'];
+
+            expect(payloadType).toBeNull();
+          });
+
+          it('should not have log out input', async () => {
+            const inputType = (await apolloClient.query({
+              query: gql`
+                query {
+                  __type(name: "LogOutInput") {
+                    inputFields {
+                      name
+                    }
+                  }
+                }
+              `,
+            })).data['__type'];
+
+            expect(inputType).toBeNull();
+          });
+
+          it('should not have log out payload', async () => {
+            const payloadType = (await apolloClient.query({
+              query: gql`
+                query {
+                  __type(name: "LogOutPayload") {
+                    fields {
+                      name
+                    }
+                  }
+                }
+              `,
+            })).data['__type'];
+
+            expect(payloadType).toBeNull();
+          });
         });
       });
 
