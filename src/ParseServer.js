@@ -272,6 +272,7 @@ class ParseServer {
         graphQLPath: options.graphQLPath,
         playgroundPath: options.playgroundPath,
         graphQLCustomTypeDefs,
+        relayStyle: options.relayStyle === true,
       });
 
       if (options.mountGraphQL) {
