@@ -1,5 +1,10 @@
 import Parse from 'parse/node';
-import { GraphQLSchema, GraphQLObjectType } from 'graphql';
+import {
+  GraphQLSchema,
+  GraphQLObjectType,
+  DocumentNode,
+  GraphQLNamedType,
+} from 'graphql';
 import { mergeSchemas, SchemaDirectiveVisitor } from 'graphql-tools';
 import requiredParameter from '../requiredParameter';
 import * as defaultGraphQLTypes from './loaders/defaultGraphQLTypes';
@@ -16,6 +21,7 @@ import { toGraphQLError } from './parseGraphQLUtils';
 import * as schemaDirectives from './loaders/schemaDirectives';
 import * as schemaTypes from './loaders/schemaTypes';
 import { getFunctionNames } from '../triggers';
+import * as defaultRelaySchema from './loaders/defaultRelaySchema';
 
 const RESERVED_GRAPHQL_TYPE_NAMES = [
   'String',
@@ -48,7 +54,15 @@ class ParseGraphQLSchema {
   databaseController: DatabaseController;
   parseGraphQLController: ParseGraphQLController;
   parseGraphQLConfig: ParseGraphQLConfig;
-  graphQLCustomTypeDefs: any;
+  log: any;
+  appId: string;
+  graphQLCustomTypeDefs: ?(
+    | string
+    | GraphQLSchema
+    | DocumentNode
+    | GraphQLNamedType[]
+  );
+  relayStyle: boolean;
 
   constructor(
     params: {
@@ -56,6 +70,13 @@ class ParseGraphQLSchema {
       parseGraphQLController: ParseGraphQLController,
       log: any,
       appId: string,
+      graphQLCustomTypeDefs: ?(
+        | string
+        | GraphQLSchema
+        | DocumentNode
+        | GraphQLNamedType[]
+      ),
+      relayStyle?: boolean,
     } = {}
   ) {
     this.parseGraphQLController =
@@ -69,6 +90,7 @@ class ParseGraphQLSchema {
     this.graphQLCustomTypeDefs = params.graphQLCustomTypeDefs;
     this.appId =
       params.appId || requiredParameter('You must provide the appId!');
+    this.relayStyle = params.relayStyle === true;
   }
 
   async load() {
@@ -99,14 +121,21 @@ class ParseGraphQLSchema {
     this.viewerType = null;
     this.graphQLAutoSchema = null;
     this.graphQLSchema = null;
+    this.graphQLSchemaIsRelayStyle = this.relayStyle;
     this.graphQLTypes = [];
     this.graphQLQueries = {};
     this.graphQLMutations = {};
     this.graphQLSubscriptions = {};
     this.graphQLSchemaDirectivesDefinitions = null;
     this.graphQLSchemaDirectives = {};
+    this.relayNodeInterface = null;
 
     defaultGraphQLTypes.load(this);
+
+    if (this.graphQLSchemaIsRelayStyle) {
+      defaultRelaySchema.load(this);
+    }
+
     schemaTypes.load(this);
 
     this._getParseClassesWithConfig(parseClasses, parseGraphQLConfig).forEach(
@@ -402,10 +431,16 @@ class ParseGraphQLSchema {
     } = params;
 
     if (
-      JSON.stringify(this.parseGraphQLConfig) ===
-        JSON.stringify(parseGraphQLConfig) &&
+      this.graphQLSchemaIsRelayStyle === this.relayStyle &&
+      (this.parseGraphQLConfig === parseGraphQLConfig ||
+        JSON.stringify(this.parseGraphQLConfig) ===
+          JSON.stringify(parseGraphQLConfig)) &&
       this.functionNamesString === functionNamesString
     ) {
+      if (this.parseGraphQLConfig !== parseGraphQLConfig) {
+        this.parseGraphQLConfig = parseGraphQLConfig;
+      }
+
       if (this.parseClasses === parseClasses) {
         return false;
       }

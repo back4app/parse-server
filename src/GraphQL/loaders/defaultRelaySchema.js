@@ -1,0 +1,3 @@
+const load = () => {};
+
+export { load };
