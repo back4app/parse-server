@@ -23,7 +23,7 @@ class ParseGraphQLServer {
     if (!config || !config.graphQLPath) {
       requiredParameter('You must provide a config.graphQLPath!');
     }
-    this.config = config;
+    this._config = Object.assign({}, config);
     this.parseGraphQLController = this.parseServer.config.parseGraphQLController;
     this.log =
       (this.parseServer.config && this.parseServer.config.loggerController) ||
@@ -32,8 +32,9 @@ class ParseGraphQLServer {
       parseGraphQLController: this.parseGraphQLController,
       databaseController: this.parseServer.config.databaseController,
       log: this.log,
-      graphQLCustomTypeDefs: this.config.graphQLCustomTypeDefs,
+      graphQLCustomTypeDefs: this._config.graphQLCustomTypeDefs,
       appId: this.parseServer.config.appId,
+      relayStyle: this._config.relayStyle === true,
     });
   }
 
@@ -74,19 +75,19 @@ class ParseGraphQLServer {
     }
 
     app.use(
-      this.config.graphQLPath,
+      this._config.graphQLPath,
       graphqlUploadExpress({
         maxFileSize: this._transformMaxUploadSizeToBytes(
           this.parseServer.config.maxUploadSize || '20mb'
         ),
       })
     );
-    app.use(this.config.graphQLPath, corsMiddleware());
-    app.use(this.config.graphQLPath, bodyParser.json());
-    app.use(this.config.graphQLPath, handleParseHeaders);
-    app.use(this.config.graphQLPath, handleParseErrors);
+    app.use(this._config.graphQLPath, corsMiddleware());
+    app.use(this._config.graphQLPath, bodyParser.json());
+    app.use(this._config.graphQLPath, handleParseHeaders);
+    app.use(this._config.graphQLPath, handleParseErrors);
     app.use(
-      this.config.graphQLPath,
+      this._config.graphQLPath,
       graphqlExpress(async req => await this._getGraphQLOptions(req))
     );
   }
@@ -96,7 +97,7 @@ class ParseGraphQLServer {
       requiredParameter('You must provide an Express.js app instance!');
     }
     app.get(
-      this.config.playgroundPath ||
+      this._config.playgroundPath ||
         requiredParameter(
           'You must provide a config.playgroundPath to applyPlayground!'
         ),
@@ -104,10 +105,11 @@ class ParseGraphQLServer {
         res.setHeader('Content-Type', 'text/html');
         res.write(
           renderPlaygroundPage({
-            endpoint: this.config.graphQLPath,
-            subscriptionEndpoint: this.config.subscriptionsPath,
+            endpoint: this._config.graphQLPath,
+            subscriptionEndpoint: this._config.subscriptionsPath,
             headers: {
               'X-Parse-Application-Id': this.parseServer.config.appId,
+              'X-Parse-Client-Key': this.parseServer.config.clientKey,
               'X-Parse-Master-Key': this.parseServer.config.masterKey,
             },
           })
@@ -132,7 +134,7 @@ class ParseGraphQLServer {
       {
         server,
         path:
-          this.config.subscriptionsPath ||
+          this._config.subscriptionsPath ||
           requiredParameter(
             'You must provide a config.subscriptionsPath to createSubscriptions!'
           ),
@@ -142,6 +144,11 @@ class ParseGraphQLServer {
 
   setGraphQLConfig(graphQLConfig: ParseGraphQLConfig): Promise {
     return this.parseGraphQLController.updateGraphQLConfig(graphQLConfig);
+  }
+
+  setRelayStyle(relayStyle) {
+    this._config.relayStyle = relayStyle;
+    this.parseGraphQLSchema.relayStyle = relayStyle;
   }
 }
 
