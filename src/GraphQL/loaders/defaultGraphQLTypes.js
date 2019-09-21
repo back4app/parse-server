@@ -1073,7 +1073,6 @@ const load = parseGraphQLSchema => {
   parseGraphQLSchema.addGraphQLType(POLYGON_WHERE_INPUT, true);
   parseGraphQLSchema.addGraphQLType(FIND_RESULT, true);
   parseGraphQLSchema.addGraphQLType(ELEMENT, true);
-  parseGraphQLSchema.addGraphQLType(OBJECT_ID, true);
 };
 
 export {

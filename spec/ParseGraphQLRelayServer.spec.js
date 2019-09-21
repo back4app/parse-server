@@ -14,6 +14,7 @@ const { getMainDefinition } = require('apollo-utilities');
 const { split } = require('apollo-link');
 const { InMemoryCache } = require('apollo-cache-inmemory');
 const gql = require('graphql-tag');
+import { toGlobalId } from 'graphql-relay';
 
 describe('ParseGraphQLServer - Relay Style', () => {
   let parseServer;
@@ -99,7 +100,7 @@ describe('ParseGraphQLServer - Relay Style', () => {
           }
         `,
         variables: {
-          id: obj.id,
+          id: toGlobalId('SomeClass', obj.id),
         },
       });
 

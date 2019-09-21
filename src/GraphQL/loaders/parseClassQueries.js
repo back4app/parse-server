@@ -1,7 +1,10 @@
+import Parse from 'parse/node';
 import { GraphQLNonNull } from 'graphql';
+import { fromGlobalId } from 'graphql-relay';
 import getFieldNames from 'graphql-list-fields';
 import pluralize from 'pluralize';
 import * as defaultGraphQLTypes from './defaultGraphQLTypes';
+import * as defaultRelaySchema from './defaultRelaySchema';
 import * as objectsQueries from '../helpers/objectsQueries';
 import { ParseGraphQLClassConfig } from '../../Controllers/ParseGraphQLController';
 import { transformClassNameToGraphQL } from '../transformers/className';
@@ -13,11 +16,29 @@ const getParseClassQueryConfig = function(
   return (parseClassConfig && parseClassConfig.query) || {};
 };
 
-const getQuery = async (className, _source, args, context, queryInfo) => {
-  const { id, options } = args;
+const getQuery = async (
+  className,
+  _source,
+  args,
+  context,
+  queryInfo,
+  isRelayStyle
+) => {
+  let { id } = args;
+  const { options } = args;
   const { readPreference, includeReadPreference } = options || {};
   const { config, auth, info } = context;
   const selectedFields = getFieldNames(queryInfo);
+
+  if (isRelayStyle) {
+    const globalIdObject = fromGlobalId(id);
+
+    if (globalIdObject.type !== className) {
+      throw new Parse.Error(Parse.Error.OBJECT_NOT_FOUND, 'Object not found.');
+    }
+
+    id = globalIdObject.id;
+  }
 
   const { keys, include } = extractKeysAndInclude(selectedFields);
 
@@ -58,7 +79,9 @@ const load = function(
     parseGraphQLSchema.addGraphQLQuery(getGraphQLQueryName, {
       description: `The ${getGraphQLQueryName} query can be used to get an object of the ${graphQLClassName} class by its id.`,
       args: {
-        id: defaultGraphQLTypes.OBJECT_ID_ATT,
+        id: parseGraphQLSchema.graphQLSchemaIsRelayStyle
+          ? defaultRelaySchema.GLOBAL_ID_ATT
+          : defaultGraphQLTypes.OBJECT_ID_ATT,
         options: defaultGraphQLTypes.READ_OPTIONS_ATT,
       },
       type: new GraphQLNonNull(
@@ -66,7 +89,14 @@ const load = function(
       ),
       async resolve(_source, args, context, queryInfo) {
         try {
-          return await getQuery(className, _source, args, context, queryInfo);
+          return await getQuery(
+            className,
+            _source,
+            args,
+            context,
+            queryInfo,
+            parseGraphQLSchema.graphQLSchemaIsRelayStyle
+          );
         } catch (e) {
           parseGraphQLSchema.handleError(e);
         }

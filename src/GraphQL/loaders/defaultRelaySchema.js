@@ -1,7 +1,14 @@
 import { nodeDefinitions, fromGlobalId } from 'graphql-relay';
 import getFieldNames from 'graphql-list-fields';
+import * as defaultGraphQLTypes from './defaultGraphQLTypes';
 import * as objectsQueries from './objectsQueries';
 import { extractKeysAndInclude } from './parseClassTypes';
+
+const GLOBAL_ID_ATT = {
+  description: 'This is the global id.',
+  type: defaultGraphQLTypes.OBJECT_ID,
+  resolve: ({ objectId }) => objectId,
+};
 
 const load = parseGraphQLSchema => {
   const { nodeInterface, nodeField } = nodeDefinitions(
@@ -42,4 +49,4 @@ const load = parseGraphQLSchema => {
   parseGraphQLSchema.addGraphQLQuery('node', nodeField, true);
 };
 
-export { load };
+export { GLOBAL_ID_ATT, load };
