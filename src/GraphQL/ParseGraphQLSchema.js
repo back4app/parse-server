@@ -1,10 +1,5 @@
 import Parse from 'parse/node';
-import {
-  GraphQLSchema,
-  GraphQLObjectType,
-  DocumentNode,
-  GraphQLNamedType,
-} from 'graphql';
+import { GraphQLSchema, GraphQLObjectType, DocumentNode, parse } from 'graphql';
 import { mergeSchemas, SchemaDirectiveVisitor } from 'graphql-tools';
 import requiredParameter from '../requiredParameter';
 import * as defaultGraphQLTypes from './loaders/defaultGraphQLTypes';
@@ -71,12 +66,7 @@ class ParseGraphQLSchema {
   parseGraphQLConfig: ParseGraphQLConfig;
   log: any;
   appId: string;
-  graphQLCustomTypeDefs: ?(
-    | string
-    | GraphQLSchema
-    | DocumentNode
-    | GraphQLNamedType[]
-  );
+  graphQLCustomTypeDefs: ?DocumentNode;
 
   constructor(
     params: {
@@ -84,12 +74,7 @@ class ParseGraphQLSchema {
       parseGraphQLController: ParseGraphQLController,
       log: any,
       appId: string,
-      graphQLCustomTypeDefs: ?(
-        | string
-        | GraphQLSchema
-        | DocumentNode
-        | GraphQLNamedType[]
-      ),
+      graphQLCustomTypeDefs: ?(string | DocumentNode),
     } = {}
   ) {
     this.parseGraphQLController =
@@ -100,7 +85,10 @@ class ParseGraphQLSchema {
       requiredParameter('You must provide a databaseController instance!');
     this.log =
       params.log || requiredParameter('You must provide a log instance!');
-    this.graphQLCustomTypeDefs = params.graphQLCustomTypeDefs;
+    this.graphQLCustomTypeDefs =
+      typeof params.graphQLCustomTypeDefs === 'string'
+        ? parse(params.graphQLCustomTypeDefs)
+        : params.graphQLCustomTypeDefs;
     this.appId =
       params.appId || requiredParameter('You must provide the appId!');
   }
