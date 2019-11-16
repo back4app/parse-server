@@ -1,4 +1,7 @@
 'use strict';
+
+const { HubStorageAdapter } = require('@back4app/hub-parse-adapters');
+
 // Sets up a Parse API server for testing.
 jasmine.DEFAULT_TIMEOUT_INTERVAL =
   process.env.PARSE_SERVER_TEST_TIMEOUT || 5000;
@@ -41,15 +44,19 @@ let databaseAdapter;
 // need to bind for mocking mocha
 
 if (process.env.PARSE_SERVER_TEST_DB === 'postgres') {
-  databaseAdapter = new PostgresStorageAdapter({
-    uri: process.env.PARSE_SERVER_TEST_DATABASE_URI || postgresURI,
-    collectionPrefix: 'test_',
-  });
+  databaseAdapter = new HubStorageAdapter(
+    new PostgresStorageAdapter({
+      uri: process.env.PARSE_SERVER_TEST_DATABASE_URI || postgresURI,
+      collectionPrefix: 'test_',
+    })
+  );
 } else {
-  databaseAdapter = new MongoStorageAdapter({
-    uri: mongoURI,
-    collectionPrefix: 'test_',
-  });
+  databaseAdapter = new HubStorageAdapter(
+    new MongoStorageAdapter({
+      uri: mongoURI,
+      collectionPrefix: 'test_',
+    })
+  );
 }
 
 const port = 8378;
@@ -243,7 +250,10 @@ afterEach(function(done) {
       });
     })
     .then(() => Parse.User.logOut())
-    .then(() => {}, () => {}) // swallow errors
+    .then(
+      () => {},
+      () => {}
+    ) // swallow errors
     .then(() => {
       // Connection close events are not immediate on node 10+... wait a bit
       return new Promise(resolve => {
