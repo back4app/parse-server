@@ -43,19 +43,30 @@ const postgresURI =
 let databaseAdapter;
 // need to bind for mocking mocha
 
+const connectedAdapters = {
+  adapter1: {
+    getAllClasses: () => [],
+  },
+  adapter2: {
+    getAllClasses: () => [],
+  },
+};
+
 if (process.env.PARSE_SERVER_TEST_DB === 'postgres') {
   databaseAdapter = new HubStorageAdapter(
     new PostgresStorageAdapter({
       uri: process.env.PARSE_SERVER_TEST_DATABASE_URI || postgresURI,
       collectionPrefix: 'test_',
-    })
+    }),
+    connectedAdapters
   );
 } else {
   databaseAdapter = new HubStorageAdapter(
     new MongoStorageAdapter({
       uri: mongoURI,
       collectionPrefix: 'test_',
-    })
+    }),
+    connectedAdapters
   );
 }
 
