@@ -1,6 +1,7 @@
 'use strict';
 
 const { HubStorageAdapter } = require('@back4app/hub-parse-adapters');
+const Parse = require('parse/node');
 
 // Sets up a Parse API server for testing.
 jasmine.DEFAULT_TIMEOUT_INTERVAL =
@@ -54,6 +55,7 @@ const connectedAdapters = {
 
 if (process.env.PARSE_SERVER_TEST_DB === 'postgres') {
   databaseAdapter = new HubStorageAdapter(
+    Parse.Error,
     new PostgresStorageAdapter({
       uri: process.env.PARSE_SERVER_TEST_DATABASE_URI || postgresURI,
       collectionPrefix: 'test_',
@@ -62,6 +64,7 @@ if (process.env.PARSE_SERVER_TEST_DB === 'postgres') {
   );
 } else {
   databaseAdapter = new HubStorageAdapter(
+    Parse.Error,
     new MongoStorageAdapter({
       uri: mongoURI,
       collectionPrefix: 'test_',
@@ -184,7 +187,6 @@ const reconfigureServer = changedConfiguration => {
 };
 
 // Set up a Parse client to talk to our test API server
-const Parse = require('parse/node');
 Parse.serverURL = 'http://localhost:' + port + '/1';
 
 beforeEach(done => {
