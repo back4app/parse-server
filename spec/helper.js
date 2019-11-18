@@ -46,10 +46,14 @@ let databaseAdapter;
 
 const connectedAdapters = {
   adapter1: {
-    getAllClasses: () => [],
+    adapter: {
+      getAllClasses: () => [],
+    },
   },
   adapter2: {
-    getAllClasses: () => [],
+    adapter: {
+      getAllClasses: () => [],
+    },
   },
 };
 
