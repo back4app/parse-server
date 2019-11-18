@@ -55,7 +55,6 @@ const connectedAdapters = {
 
 if (process.env.PARSE_SERVER_TEST_DB === 'postgres') {
   databaseAdapter = new HubStorageAdapter(
-    Parse.Error,
     new PostgresStorageAdapter({
       uri: process.env.PARSE_SERVER_TEST_DATABASE_URI || postgresURI,
       collectionPrefix: 'test_',
@@ -64,7 +63,6 @@ if (process.env.PARSE_SERVER_TEST_DB === 'postgres') {
   );
 } else {
   databaseAdapter = new HubStorageAdapter(
-    Parse.Error,
     new MongoStorageAdapter({
       uri: mongoURI,
       collectionPrefix: 'test_',
