@@ -871,4 +871,58 @@ describe('Parse.Relation testing', () => {
       .then(done)
       .catch(done.fail);
   });
+
+  it('should not allow duplicates', async () => {
+    const child1 = new Parse.Object('ChildClass');
+    await child1.save();
+    const child2 = new Parse.Object('ChildClass');
+    await child2.save();
+    const child3 = new Parse.Object('ChildClass');
+    await child3.save();
+    const child4 = new Parse.Object('ChildClass');
+    await child4.save();
+    const child5 = new Parse.Object('ChildClass');
+    await child5.save();
+    const child6 = new Parse.Object('ChildClass');
+    await child6.save();
+
+    const parent = new Parse.Object('ParentClass');
+    const relation = parent.relation('children');
+    relation.add(child1);
+    relation.add(child2);
+    relation.add(child3);
+    relation.add(child4);
+    relation.add(child4);
+
+    await parent.save();
+
+    const children = await parent
+      .relation('children')
+      .query()
+      .find();
+    expect(children.map(child => child.id).sort()).toEqual(
+      [child1.id, child2.id, child3.id, child4.id].sort()
+    );
+
+    const parentAgain = await new Parse.Query('ParentClass').get(parent.id);
+    const relationAgain = parentAgain.relation('children');
+    relationAgain.add(child1);
+    relationAgain.add(child2);
+    relationAgain.add(child3);
+    relationAgain.add(child4);
+    relationAgain.add(child4);
+    relationAgain.add(child5);
+    relationAgain.add(child6);
+    relationAgain.add(child6);
+
+    await parentAgain.save();
+
+    const childrenAgain = await parentAgain
+      .relation('children')
+      .query()
+      .find();
+    expect(childrenAgain.map(child => child.id).sort()).toEqual(
+      [child1.id, child2.id, child3.id, child4.id, child5.id, child6.id].sort()
+    );
+  });
 });
