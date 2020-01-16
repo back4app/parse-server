@@ -141,19 +141,20 @@ export class ImportRouter {
 
     if (req.params.relationName) {
       promise = this.getOneSchema(req).then(response => {
-        if (!response.fields.hasOwnProperty(req.params.relationName)) {
+        if (
+          !Object.prototype.hasOwnProperty.call(
+            response.fields,
+            req.params.relationName
+          )
+        ) {
           throw new Error(
-            `Relation ${req.params.relationName} does not exist in ${
-              req.params.className
-            }.`
+            `Relation ${req.params.relationName} does not exist in ${req.params.className}.`
           );
         } else if (
           response.fields[req.params.relationName].type !== 'Relation'
         ) {
           throw new Error(
-            `Class ${
-              response.fields[req.params.relationName].targetClass
-            } does not have Relation type.`
+            `Class ${response.fields[req.params.relationName].targetClass} does not have Relation type.`
           );
         }
 
@@ -255,7 +256,7 @@ export class ImportRouter {
     router.post(
       '/import_data/:className',
       upload.single('importFile'),
-      middlewares.allowCrossDomain,
+      // middlewares.allowCrossDomain,
       middlewares.handleParseHeaders,
       middlewares.enforceMasterKeyAccess,
       (req, res) =>
@@ -265,7 +266,7 @@ export class ImportRouter {
     router.post(
       '/import_relation_data/:className/:relationName',
       upload.single('importFile'),
-      middlewares.allowCrossDomain,
+      // middlewares.allowCrossDomain,
       middlewares.handleParseHeaders,
       middlewares.enforceMasterKeyAccess,
       (req, res) =>
