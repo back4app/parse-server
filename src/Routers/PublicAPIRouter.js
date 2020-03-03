@@ -12,7 +12,8 @@ let views = path.resolve(__dirname, '../../views');
 export class PublicAPIRouter extends PromiseRouter {
 
   verifyEmail(req) {
-    let { token, username }= req.query;
+    let { username, token: rawToken } = req.query;
+    let token = rawToken && typeof rawToken !== 'string' ? rawToken.toString() : rawToken;
     let appId = req.params.appId;
     let config = new Config(appId);
 
@@ -66,7 +67,9 @@ export class PublicAPIRouter extends PromiseRouter {
       return this.missingPublicServerURL();
     }
 
-    let { username, token } = req.query;
+    let { username, token: rawToken } = req.query;
+
+    let token = rawToken && typeof rawToken !== 'string' ? rawToken.toString() : rawToken;
 
     if (!username || !token) {
       return this.invalidLink(req);
@@ -91,11 +94,8 @@ export class PublicAPIRouter extends PromiseRouter {
       return this.missingPublicServerURL();
     }
 
-    let {
-      username,
-      token,
-      new_password
-    } = req.body;
+    let { username, new_password, token: rawToken } = req.body;
+    let token = rawToken && typeof rawToken !== 'string' ? rawToken.toString() : rawToken;
 
     if (!username || !token || !new_password) {
       return this.invalidLink(req);
