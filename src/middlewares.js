@@ -93,6 +93,10 @@ function handleParseHeaders(req, res, next) {
     }
   }
 
+  if (info.sessionToken && typeof info.sessionToken !== 'string') {
+    info.sessionToken = info.sessionToken.toString();
+  }
+  
   if (fileViaJSON) {
     // We need to repopulate req.body with a buffer
     var base64 = req.body.base64;
