@@ -75,7 +75,7 @@ describe_only_db('mongo')('MongoStorageAdapter', () => {
   });
 
   it('find succeeds when query is within maxTimeMS', done => {
-    const maxTimeMS = 250;
+    const maxTimeMS = 2500;
     const adapter = new MongoStorageAdapter({
       uri: databaseURI,
       mongoOptions: { maxTimeMS },
@@ -111,7 +111,7 @@ describe_only_db('mongo')('MongoStorageAdapter', () => {
         err => {
           expect(err.name).toEqual('MongoError');
           expect(err.code).toEqual(50);
-          expect(err.message).toMatch('operation exceeded time limit');
+          expect(err.message).toContain('operation exceeded time limit');
           done();
         }
       );

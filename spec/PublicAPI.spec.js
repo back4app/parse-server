@@ -3,7 +3,10 @@ const req = require('../lib/request');
 const request = function(url, callback) {
   return req({
     url,
-  }).then(response => callback(null, response), err => callback(err, err));
+  }).then(
+    response => callback(null, response),
+    err => callback(err, err)
+  );
 };
 
 describe('public API', () => {

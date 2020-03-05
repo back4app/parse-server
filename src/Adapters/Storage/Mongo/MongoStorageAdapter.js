@@ -1061,13 +1061,17 @@ export class MongoStorageAdapter implements StorageAdapter {
 
   createIndex(className: string, index: any) {
     return this._adaptiveCollection(className)
-      .then(collection => collection._mongoCollection.createIndex(index))
+      .then(collection =>
+        collection._mongoCollection.createIndex(index, { background: true })
+      )
       .catch(err => this.handleError(err));
   }
 
   createIndexes(className: string, indexes: any) {
     return this._adaptiveCollection(className)
-      .then(collection => collection._mongoCollection.createIndexes(indexes))
+      .then(collection =>
+        collection._mongoCollection.createIndexes(indexes, { background: true })
+      )
       .catch(err => this.handleError(err));
   }
 

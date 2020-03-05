@@ -144,6 +144,12 @@ const defaultColumns: { [string]: SchemaFields } = Object.freeze({
     lastUsed: { type: 'Date' },
     timesUsed: { type: 'Number' },
   },
+  _ExportProgress: {
+    objectId: { type: 'String' },
+    id: { type: 'String' },
+    masterKey: { type: 'String' },
+    applicationId: { type: 'String' },
+  },
 });
 
 const requiredColumns = Object.freeze({
@@ -161,6 +167,7 @@ const systemClasses = Object.freeze([
   '_JobStatus',
   '_JobSchedule',
   '_Audience',
+  '_ExportProgress',
 ]);
 
 const volatileClasses = Object.freeze([
@@ -171,6 +178,7 @@ const volatileClasses = Object.freeze([
   '_GraphQLConfig',
   '_JobSchedule',
   '_Audience',
+  '_ExportProgress',
 ]);
 
 // Anything that start with role

@@ -2124,7 +2124,7 @@ describe('Parse.Query testing', () => {
       .then(done);
   });
 
-  it('Use a regex that requires all modifiers', function(done) {
+  xit('Use a regex that requires all modifiers', function(done) {
     const thing = new TestObject();
     thing.set('myString', 'PArSe\nCom');
     Parse.Object.saveAll([thing]).then(function() {

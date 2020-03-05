@@ -14,7 +14,6 @@ export class PublicAPIRouter extends PromiseRouter {
     const { username, token: rawToken } = req.query;
     const token =
       rawToken && typeof rawToken !== 'string' ? rawToken.toString() : rawToken;
-
     const appId = req.params.appId;
     const config = Config.get(appId);
 
