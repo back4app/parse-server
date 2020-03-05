@@ -34,6 +34,12 @@
       margin: 0 0 15px 0;
       padding: 0 0 0 0;
     }
+
+    img {
+      margin: 55px 0px 15px 0;
+      padding: 0 0 0 0;
+      height: 40px;
+    }
   </style>
   </head>
   <script type="text/javascript">
@@ -59,10 +65,13 @@
   <body> 
     <div class="container">
       <h1>Invalid Verification Link</h1>
-        <form id="resendForm" method="POST" action="/resend_verification_email">
-          <input id="usernameField" class="form-control" name="username" type="hidden" value="">
-          <button type="submit" class="btn btn-default">Resend Link</button>
-        </form>
+      <form id="resendForm" method="POST" action="/resend_verification_email">
+        <input id="usernameField" class="form-control" name="username" type="hidden" value="">
+        <button type="submit" class="btn btn-default">Resend Link</button>
+      </form>
+      <a href="https://www.back4app.com">
+        <img src="https://static.back4app.com/powered-by-back4app.svg" />
+      </a>
     </div> 
   </body>
 </html>
