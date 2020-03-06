@@ -18,9 +18,9 @@
   ],
   "license": "BSD-3-Clause",
   "dependencies": {
-    "adm-zip": "^0.4.7",
+    "adm-zip": "0.4.7",
     "bcryptjs": "2.3.0",
-    "bluebird": "^3.4.6",
+    "bluebird": "3.4.6",
     "body-parser": "1.15.2",
     "commander": "2.9.0",
     "deepcopy": "0.6.3",
