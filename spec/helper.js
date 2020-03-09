@@ -230,6 +230,7 @@ afterEach(function(done) {
                   '_Session',
                   '_Product',
                   '_Audience',
+                  '_ExportProgress',
                 ].indexOf(className) >= 0
               );
             }
@@ -406,6 +407,8 @@ global.databaseAdapter = databaseAdapter;
 global.jfail = function(err) {
   fail(JSON.stringify(err));
 };
+
+global.xit_exclude_dbs = () => xit;
 
 global.it_exclude_dbs = excluded => {
   if (excluded.indexOf(process.env.PARSE_SERVER_TEST_DB) >= 0) {

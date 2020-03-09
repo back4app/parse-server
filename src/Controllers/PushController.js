@@ -4,6 +4,7 @@ import RestWrite from '../RestWrite';
 import { master } from '../Auth';
 import { pushStatusHandler } from '../StatusHandler';
 import { applyDeviceTokenExists } from '../Push/utils';
+import { logger } from '../logger';
 
 export class PushController {
   sendPush(
@@ -99,7 +100,19 @@ export class PushController {
       })
       .then(() => {
         onPushStatusSaved(pushStatus.objectId);
-        return badgeUpdate();
+        return badgeUpdate().catch(err => {
+          // add this to ignore badge update errors as default
+          if (config.stopOnBadgeUpdateError) throw err;
+          logger.info(
+            `Badge update error will be ignored for push status ${pushStatus.objectId}`
+          );
+          logger.info(
+            (err && err.stack && err.stack.toString()) ||
+              (err && err.message) ||
+              err.toString()
+          );
+          return Promise.resolve();
+        });
       })
       .then(() => {
         // Update audience lastUsed and timesUsed

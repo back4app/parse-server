@@ -963,25 +963,29 @@ describe('Parse.Query Aggregate testing', () => {
     await Parse.Object.saveAll([obj1, obj2, obj3, obj4, obj5, obj6]);
 
     expect(
-      (await new Parse.Query('MyCollection').aggregate([
-        {
-          match: {
-            language: { $in: [null, 'en'] },
+      (
+        await new Parse.Query('MyCollection').aggregate([
+          {
+            match: {
+              language: { $in: [null, 'en'] },
+            },
           },
-        },
-      ]))
+        ])
+      )
         .map(value => value.otherField)
         .sort()
     ).toEqual([1, 2, 3, 4]);
 
     expect(
-      (await new Parse.Query('MyCollection').aggregate([
-        {
-          match: {
-            $or: [{ language: 'en' }, { language: null }],
+      (
+        await new Parse.Query('MyCollection').aggregate([
+          {
+            match: {
+              $or: [{ language: 'en' }, { language: null }],
+            },
           },
-        },
-      ]))
+        ])
+      )
         .map(value => value.otherField)
         .sort()
     ).toEqual([1, 2, 3, 4]);

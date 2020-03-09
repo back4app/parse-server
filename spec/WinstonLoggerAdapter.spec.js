@@ -62,7 +62,9 @@ describe('info logs', () => {
 
   it('info logs should interpolate json', async () => {
     const winstonLoggerAdapter = new WinstonLoggerAdapter();
-    winstonLoggerAdapter.log('info', 'testing info logs with %j', { hello: 'world' });
+    winstonLoggerAdapter.log('info', 'testing info logs with %j', {
+      hello: 'world',
+    });
     const results = await winstonLoggerAdapter.query({
       from: new Date(Date.now() - 500),
       size: 100,
@@ -86,9 +88,7 @@ describe('info logs', () => {
       order: 'desc',
     });
     expect(results.length > 0).toBeTruthy();
-    const log = results.find(
-      x => x.message === 'testing info logs with 123'
-    );
+    const log = results.find(x => x.message === 'testing info logs with 123');
     expect(log);
   });
 });
@@ -148,7 +148,9 @@ describe('error logs', () => {
 
   it('error logs should interpolate json', async () => {
     const winstonLoggerAdapter = new WinstonLoggerAdapter();
-    winstonLoggerAdapter.log('error', 'testing error logs with %j', { hello: 'world' });
+    winstonLoggerAdapter.log('error', 'testing error logs with %j', {
+      hello: 'world',
+    });
     const results = await winstonLoggerAdapter.query({
       from: new Date(Date.now() - 500),
       size: 100,
@@ -172,9 +174,7 @@ describe('error logs', () => {
       order: 'desc',
     });
     expect(results.length > 0).toBeTruthy();
-    const log = results.find(
-      x => x.message === 'testing error logs with 123'
-    );
+    const log = results.find(x => x.message === 'testing error logs with 123');
     expect(log);
   });
 });
@@ -248,7 +248,9 @@ describe('verbose logs', () => {
   it('verbose logs should interpolate json', async () => {
     await reconfigureServer({ verbose: true });
     const winstonLoggerAdapter = new WinstonLoggerAdapter();
-    winstonLoggerAdapter.log('verbose', 'testing verbose logs with %j', { hello: 'world' });
+    winstonLoggerAdapter.log('verbose', 'testing verbose logs with %j', {
+      hello: 'world',
+    });
     const results = await winstonLoggerAdapter.query({
       from: new Date(Date.now() - 500),
       size: 100,

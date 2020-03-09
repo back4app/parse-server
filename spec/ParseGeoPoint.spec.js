@@ -445,7 +445,13 @@ describe('Parse.GeoPoint testing', () => {
     const obj3 = new Parse.Object('Polygon', { location: outbound });
     const polygon = {
       __type: 'Polygon',
-      coordinates: [[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]],
+      coordinates: [
+        [0, 0],
+        [10, 0],
+        [10, 10],
+        [0, 10],
+        [0, 0],
+      ],
     };
     Parse.Object.saveAll([obj1, obj2, obj3])
       .then(() => {
@@ -478,7 +484,10 @@ describe('Parse.GeoPoint testing', () => {
     const obj = new Parse.Object('Polygon', { location: point });
     const polygon = {
       __type: 'Polygon',
-      coordinates: [[0, 0], [10, 0]],
+      coordinates: [
+        [0, 0],
+        [10, 0],
+      ],
     };
     obj
       .save()
@@ -516,7 +525,11 @@ describe('Parse.GeoPoint testing', () => {
     const obj = new Parse.Object('Polygon', { location: point });
     const polygon = {
       __type: 'Polygon',
-      coordinates: [[0, 0], [181, 0], [0, 10]],
+      coordinates: [
+        [0, 0],
+        [181, 0],
+        [0, 10],
+      ],
     };
     obj
       .save()

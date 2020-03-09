@@ -168,7 +168,7 @@ describe('httpRequest', () => {
 
   it('should fail gracefully', done => {
     httpRequest({
-      url: 'http://not a good url',
+      url: 'http://127.0.0.1:99999',
     }).then(done.fail, function(error) {
       expect(error).not.toBeUndefined();
       expect(error).not.toBeNull();

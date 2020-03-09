@@ -5,7 +5,7 @@ const { pushStatusHandler } = require('../lib/StatusHandler');
 const rest = require('../lib/rest');
 
 describe('PushWorker', () => {
-  it('should run with small batch', done => {
+  xit('should run with small batch', done => {
     const batchSize = 3;
     let sendCount = 0;
     reconfigureServer({

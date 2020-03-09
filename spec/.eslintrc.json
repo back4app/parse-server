@@ -17,6 +17,7 @@
       "notEqual": true,
       "it_only_db": true,
       "it_exclude_dbs": true,
+      "xit_exclude_dbs": true,
       "describe_only_db": true,
       "describe_only": true,
       "on_db": true,
