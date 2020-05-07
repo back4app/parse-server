@@ -210,6 +210,11 @@ export function pushStatusHandler(config, existingObjectId) {
     );
   };
 
+  const update = function(update) {
+    logger.verbose(`_PushStatus ${objectId}: updating values %j`, update);
+    return handler.update({ objectId }, update);
+  };
+
   const trackSent = function(
     results,
     UTCOffset,
@@ -336,6 +341,7 @@ export function pushStatusHandler(config, existingObjectId) {
     setRunning,
     trackSent,
     complete,
+    update,
     fail,
   };
 

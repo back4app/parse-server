@@ -111,6 +111,9 @@ export function handleParseHeaders(req, res, next) {
       return invalidRequest(req, res);
     }
   }
+  if (info.sessionToken && typeof info.sessionToken !== 'string') {
+    info.sessionToken = info.sessionToken.toString();
+  }
 
   if (info.sessionToken && typeof info.sessionToken !== 'string') {
     info.sessionToken = info.sessionToken.toString();

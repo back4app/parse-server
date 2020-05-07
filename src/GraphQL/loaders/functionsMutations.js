@@ -49,15 +49,17 @@ const load = parseGraphQLSchema => {
           const { config, auth, info } = context;
 
           return {
-            result: (await FunctionsRouter.handleCloudFunction({
-              params: {
-                functionName,
-              },
-              config,
-              auth,
-              info,
-              body: params,
-            })).response.result,
+            result: (
+              await FunctionsRouter.handleCloudFunction({
+                params: {
+                  functionName,
+                },
+                config,
+                auth,
+                info,
+                body: params,
+              })
+            ).response.result,
           };
         } catch (e) {
           parseGraphQLSchema.handleError(e);
