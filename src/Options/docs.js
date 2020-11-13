@@ -4,6 +4,7 @@
  * @property {Boolean} allowClientClassCreation Enable (or disable) client class creation, defaults to true
  * @property {Boolean} allowCustomObjectId Enable (or disable) custom objectId
  * @property {String[]} allowHeaders Add headers to Access-Control-Allow-Headers
+ * @property {String} allowOrigin Sets the origin to Access-Control-Allow-Origin
  * @property {Adapter<AnalyticsAdapter>} analyticsAdapter Adapter module for the analytics
  * @property {String} appId Your Parse Application ID
  * @property {String} appName Sets the app name
@@ -23,15 +24,17 @@
  * @property {String} dotNetKey Key for Unity and .Net SDK
  * @property {Adapter<MailAdapter>} emailAdapter Adapter module for email sending
  * @property {Number} emailVerifyTokenValidityDuration Email verification token validity duration, in seconds
- * @property {Boolean} enableAnonymousUsers Enable (or disable) anon users, defaults to true
+ * @property {Boolean} enableAnonymousUsers Enable (or disable) anonymous users, defaults to true
  * @property {Boolean} enableExpressErrorHandler Enables the default express error handler for all errors
  * @property {Boolean} enableSingleSchemaCache Use a single schema cache shared across requests. Reduces number of queries made to _SCHEMA, defaults to false, i.e. unique schema cache per request.
+ * @property {String} encryptionKey Key for encrypting your files
  * @property {Boolean} expireInactiveSessions Sets wether we should expire the inactive sessions, defaults to true
  * @property {String} fileKey Key for your files
  * @property {Adapter<FilesAdapter>} filesAdapter Adapter module for the files sub-system
  * @property {String} graphQLPath Mount path for the GraphQL endpoint, defaults to /graphql
  * @property {String} graphQLSchema Full path to your GraphQL custom schema.graphql file
  * @property {String} host The host to serve ParseServer on, defaults to 0.0.0.0
+ * @property {IdempotencyOptions} idempotencyOptions Options for request idempotency to deduplicate identical requests that may be caused by network issues. Caution, this is an experimental feature that may not be appropriate for production.
  * @property {String} javascriptKey Key for the Javascript SDK
  * @property {Boolean} jsonLogs Log as structured JSON objects
  * @property {LiveQueryOptions} liveQuery parse-server's LiveQuery configuration object
@@ -98,7 +101,7 @@
 /**
  * @interface LiveQueryServerOptions
  * @property {String} appId This string should match the appId in use by your Parse Server. If you deploy the LiveQuery server alongside Parse Server, the LiveQuery server will try to use the same appId.
- * @property {Number} cacheTimeout Number in milliseconds. When clients provide the sessionToken to the LiveQuery server, the LiveQuery server will try to fetch its ParseUser's objectId from parse server and store it in the cache. The value defines the duration of the cache. Check the following Security section and our protocol specification for details, defaults to 30 * 24 * 60 * 60 * 1000 ms (~30 days).
+ * @property {Number} cacheTimeout Number in milliseconds. When clients provide the sessionToken to the LiveQuery server, the LiveQuery server will try to fetch its ParseUser's objectId from parse server and store it in the cache. The value defines the duration of the cache. Check the following Security section and our protocol specification for details, defaults to 5 * 1000 ms (5 seconds).
  * @property {Any} keyPairs A JSON object that serves as a whitelist of keys. It is used for validating clients when they try to connect to the LiveQuery server. Check the following Security section and our protocol specification for details.
  * @property {String} logLevel This string defines the log level of the LiveQuery server. We support VERBOSE, INFO, ERROR, NONE, defaults to INFO.
  * @property {String} masterKey This string should match the masterKey in use by your Parse Server. If you deploy the LiveQuery server alongside Parse Server, the LiveQuery server will try to use the same masterKey.
@@ -109,4 +112,10 @@
  * @property {String} serverURL This string should match the serverURL in use by your Parse Server. If you deploy the LiveQuery server alongside Parse Server, the LiveQuery server will try to use the same serverURL.
  * @property {Number} websocketTimeout Number of milliseconds between ping/pong frames. The WebSocket server sends ping/pong frames to the clients to keep the WebSocket alive. This value defines the interval of the ping/pong frame from the server to clients, defaults to 10 * 1000 ms (10 s).
  * @property {Adapter<WSSAdapter>} wssAdapter Adapter module for the WebSocketServer
+ */
+
+/**
+ * @interface IdempotencyOptions
+ * @property {String[]} paths An array of paths for which the feature should be enabled. The mount path must not be included, for example instead of `/parse/functions/myFunction` specifiy `functions/myFunction`. The entries are interpreted as regular expression, for example `functions/.*` matches all functions, `jobs/.*` matches all jobs, `classes/.*` matches all classes, `.*` matches all paths.
+ * @property {Number} ttl The duration in seconds after which a request record is discarded from the database, defaults to 300s.
  */

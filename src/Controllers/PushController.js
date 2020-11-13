@@ -7,19 +7,9 @@ import { applyDeviceTokenExists } from '../Push/utils';
 import { logger } from '../logger';
 
 export class PushController {
-  sendPush(
-    body = {},
-    where = {},
-    config,
-    auth,
-    onPushStatusSaved = () => {},
-    now = new Date()
-  ) {
+  sendPush(body = {}, where = {}, config, auth, onPushStatusSaved = () => {}, now = new Date()) {
     if (!config.hasPushSupport) {
-      throw new Parse.Error(
-        Parse.Error.PUSH_MISCONFIGURED,
-        'Missing push configuration'
-      );
+      throw new Parse.Error(Parse.Error.PUSH_MISCONFIGURED, 'Missing push configuration');
     }
 
     // Replace the expiration_time and push_time with a valid Unix epoch milliseconds time
@@ -33,10 +23,7 @@ export class PushController {
     }
 
     // Immediate push
-    if (
-      body.expiration_interval &&
-      !Object.prototype.hasOwnProperty.call(body, 'push_time')
-    ) {
+    if (body.expiration_interval && !Object.prototype.hasOwnProperty.call(body, 'push_time')) {
       const ttlMs = body.expiration_interval * 1000;
       body.expiration_time = new Date(now.valueOf() + ttlMs).valueOf();
     }
@@ -74,12 +61,7 @@ export class PushController {
       const updateWhere = applyDeviceTokenExists(where);
       badgeUpdate = () => {
         // Build a real RestQuery so we can use it in RestWrite
-        const restQuery = new RestQuery(
-          config,
-          master(config),
-          '_Installation',
-          updateWhere
-        );
+        const restQuery = new RestQuery(config, master(config), '_Installation', updateWhere);
         return restQuery.buildRestWhere().then(() => {
           const write = new RestWrite(
             config,
@@ -142,13 +124,7 @@ export class PushController {
         ) {
           return Promise.resolve();
         }
-        return config.pushControllerQueue.enqueue(
-          body,
-          where,
-          config,
-          auth,
-          pushStatus
-        );
+        return config.pushControllerQueue.enqueue(body, where, config, auth, pushStatus);
       })
       .catch(err => {
         return pushStatus.fail(err).then(() => {
@@ -163,10 +139,7 @@ export class PushController {
    * @returns {Number|undefined} The expiration time if it exists in the request
    */
   static getExpirationTime(body = {}) {
-    var hasExpirationTime = Object.prototype.hasOwnProperty.call(
-      body,
-      'expiration_time'
-    );
+    var hasExpirationTime = Object.prototype.hasOwnProperty.call(body, 'expiration_time');
     if (!hasExpirationTime) {
       return;
     }
@@ -193,19 +166,13 @@ export class PushController {
   }
 
   static getExpirationInterval(body = {}) {
-    const hasExpirationInterval = Object.prototype.hasOwnProperty.call(
-      body,
-      'expiration_interval'
-    );
+    const hasExpirationInterval = Object.prototype.hasOwnProperty.call(body, 'expiration_interval');
     if (!hasExpirationInterval) {
       return;
     }
 
     var expirationIntervalParam = body['expiration_interval'];
-    if (
-      typeof expirationIntervalParam !== 'number' ||
-      expirationIntervalParam <= 0
-    ) {
+    if (typeof expirationIntervalParam !== 'number' || expirationIntervalParam <= 0) {
       throw new Parse.Error(
         Parse.Error.PUSH_MISCONFIGURED,
         `expiration_interval must be a number greater than 0`
@@ -261,8 +228,7 @@ export class PushController {
   static pushTimeHasTimezoneComponent(pushTimeParam: string): boolean {
     const offsetPattern = /(.+)([+-])\d\d:\d\d$/;
     return (
-      pushTimeParam.indexOf('Z') === pushTimeParam.length - 1 || // 2007-04-05T12:30Z
-      offsetPattern.test(pushTimeParam)
+      pushTimeParam.indexOf('Z') === pushTimeParam.length - 1 || offsetPattern.test(pushTimeParam) // 2007-04-05T12:30Z
     ); // 2007-04-05T12:30.000+02:00, 2007-04-05T12:30.000-02:00
   }
 
@@ -272,13 +238,7 @@ export class PushController {
    * @param isLocalTime {boolean}
    * @returns {string}
    */
-  static formatPushTime({
-    date,
-    isLocalTime,
-  }: {
-    date: Date,
-    isLocalTime: boolean,
-  }) {
+  static formatPushTime({ date, isLocalTime }: { date: Date, isLocalTime: boolean }) {
     if (isLocalTime) {
       // Strip 'Z'
       const isoString = date.toISOString();

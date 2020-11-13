@@ -9,6 +9,7 @@ import UsersRouter from '../../Routers/UsersRouter';
 import * as objectsMutations from '../helpers/objectsMutations';
 import { OBJECT } from './defaultGraphQLTypes';
 import { getUserFromSessionToken } from './usersQueries';
+import { transformTypes } from '../transformers/mutation';
 
 const usersRouter = new UsersRouter();
 
@@ -41,23 +42,28 @@ const load = parseGraphQLSchema => {
         const { fields } = args;
         const { config, auth, info } = context;
 
-        const { sessionToken } = await objectsMutations.createObject(
+        const parseFields = await transformTypes('create', fields, {
+          className: '_User',
+          parseGraphQLSchema,
+          req: { config, auth, info },
+        });
+
+        const { sessionToken, objectId } = await objectsMutations.createObject(
           '_User',
-          fields,
+          parseFields,
           config,
           auth,
           info
         );
 
-        info.sessionToken = sessionToken;
+        context.info.sessionToken = sessionToken;
 
         return {
           viewer: await getUserFromSessionToken(
-            config,
-            info,
+            context,
             mutationInfo,
             'viewer.user.',
-            true
+            objectId
           ),
         };
       } catch (e) {
@@ -120,23 +126,28 @@ const load = parseGraphQLSchema => {
         const { fields, authData } = args;
         const { config, auth, info } = context;
 
-        const { sessionToken } = await objectsMutations.createObject(
+        const parseFields = await transformTypes('create', fields, {
+          className: '_User',
+          parseGraphQLSchema,
+          req: { config, auth, info },
+        });
+
+        const { sessionToken, objectId } = await objectsMutations.createObject(
           '_User',
-          { ...fields, authData },
+          { ...parseFields, authData },
           config,
           auth,
           info
         );
 
-        info.sessionToken = sessionToken;
+        context.info.sessionToken = sessionToken;
 
         return {
           viewer: await getUserFromSessionToken(
-            config,
-            info,
+            context,
             mutationInfo,
             'viewer.user.',
-            true
+            objectId
           ),
         };
       } catch (e) {
@@ -183,7 +194,7 @@ const load = parseGraphQLSchema => {
         const { username, password } = args;
         const { config, auth, info } = context;
 
-        const { sessionToken } = (
+        const { sessionToken, objectId } = (
           await usersRouter.handleLogIn({
             body: {
               username,
@@ -196,15 +207,14 @@ const load = parseGraphQLSchema => {
           })
         ).response;
 
-        info.sessionToken = sessionToken;
+        context.info.sessionToken = sessionToken;
 
         return {
           viewer: await getUserFromSessionToken(
-            config,
-            info,
+            context,
             mutationInfo,
             'viewer.user.',
-            true
+            objectId
           ),
         };
       } catch (e) {
@@ -236,11 +246,10 @@ const load = parseGraphQLSchema => {
         const { config, auth, info } = context;
 
         const viewer = await getUserFromSessionToken(
-          config,
-          info,
+          context,
           mutationInfo,
           'viewer.user.',
-          true
+          auth.user.id
         );
 
         await usersRouter.handleLogOut({
