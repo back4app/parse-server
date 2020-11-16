@@ -118,6 +118,10 @@
   "engines": {
     "node": ">= 8"
   },
+  "resolutions": {
+    "graphql": "15.3.0",
+    "**/graphql": "15.3.0"
+  },
   "bin": {
     "parse-server": "./bin/parse-server"
   },
