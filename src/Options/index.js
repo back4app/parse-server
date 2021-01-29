@@ -124,10 +124,13 @@ export interface ParseServerOptions {
   preventLoginWithUnverifiedEmail: ?boolean;
   /* Email verification token validity duration, in seconds */
   emailVerifyTokenValidityDuration: ?number;
+  /* an existing email verify token should be reused when resend verification email is requested
+  :DEFAULT: false */
+  emailVerifyTokenReuseIfValid: ?boolean;
   /* account lockout policy for failed login attempts */
-  accountLockout: ?any;
+  accountLockout: ?AccountLockoutOptions;
   /* Password policy for enforcing password related rules */
-  passwordPolicy: ?any;
+  passwordPolicy: ?PasswordPolicyOptions;
   /* Adapter module for the cache */
   cacheAdapter: ?Adapter<CacheAdapter>;
   /* Adapter module for email sending */
@@ -195,6 +198,10 @@ export interface ParseServerOptions {
   :ENV: PARSE_SERVER_EXPERIMENTAL_IDEMPOTENCY_OPTIONS
   :DEFAULT: false */
   idempotencyOptions: ?IdempotencyOptions;
+  /* Options for file uploads
+  :ENV: PARSE_SERVER_FILE_UPLOAD_OPTIONS
+  :DEFAULT: {} */
+  fileUpload: ?FileUploadOptions;
   /* Full path to your GraphQL custom schema.graphql file */
   graphQLSchema: ?string;
   /* Mounts the GraphQL endpoint
@@ -287,4 +294,40 @@ export interface IdempotencyOptions {
   /* The duration in seconds after which a request record is discarded from the database, defaults to 300s.
   :DEFAULT: 300 */
   ttl: ?number;
+}
+
+export interface AccountLockoutOptions {
+  /* number of minutes that a locked-out account remains locked out before automatically becoming unlocked. */
+  duration: ?number;
+  /* number of failed sign-in attempts that will cause a user account to be locked */
+  threshold: ?number;
+}
+
+export interface PasswordPolicyOptions {
+  /* a RegExp object or a regex string representing the pattern to enforce */
+  validatorPattern: ?string;
+  /* a callback function to be invoked to validate the password  */
+  validatorCallback: ?() => void;
+  /* disallow username in passwords */
+  doNotAllowUsername: ?boolean;
+  /* days for password expiry */
+  maxPasswordAge: ?number;
+  /* setting to prevent reuse of previous n passwords */
+  maxPasswordHistory: ?number;
+  /* time for token to expire */
+  resetTokenValidityDuration: ?number;
+  /* resend token if it's still valid */
+  resetTokenReuseIfValid: ?boolean;
+}
+
+export interface FileUploadOptions {
+  /*  Is true if file upload should be allowed for anonymous users.
+  :DEFAULT: false */
+  enableForAnonymousUser: ?boolean;
+  /* Is true if file upload should be allowed for authenticated users.
+  :DEFAULT: true */
+  enableForAuthenticatedUser: ?boolean;
+  /* Is true if file upload should be allowed for anyone, regardless of user authentication.
+  :DEFAULT: false */
+  enableForPublic: ?boolean;
 }
