@@ -119,8 +119,8 @@
     "node": ">= 8"
   },
   "resolutions": {
-    "graphql": "14.6.0",
-    "**/graphql": "14.6.0"
+    "graphql": "15.4.0",
+    "**/graphql": "15.4.0"
   },
   "bin": {
     "parse-server": "bin/parse-server"
