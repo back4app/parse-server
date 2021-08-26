@@ -1818,13 +1818,13 @@ class DatabaseController {
       VolatileClassesSchemas: SchemaController.VolatileClassesSchemas,
     });
     return Promise.all([
-      usernameUniqueness,
-      usernameCaseInsensitiveIndex,
-      emailUniqueness,
-      emailCaseInsensitiveIndex,
-      roleUniqueness,
-      adapterInit,
-      indexPromise,
+      // usernameUniqueness,
+      // usernameCaseInsensitiveIndex,
+      // emailUniqueness,
+      // emailCaseInsensitiveIndex,
+      // roleUniqueness,
+      adapterInit
+      // indexPromise,
     ]);
   }
 
