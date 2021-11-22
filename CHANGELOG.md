@@ -1,19 +1,56 @@
-## Parse Server Changelog
+# Parse Server Changelog
 
-### master
-[Full Changelog](https://github.com/parse-community/parse-server/compare/4.5.0...master)
+## 4.10.4
+[Full Changelog](https://github.com/parse-community/parse-server/compare/4.10.3...4.10.4)
 
-__BREAKING CHANGES:__
-- NEW: Added file upload restriction. File upload is now only allowed for authenticated users by default for improved security. To allow file upload also for Anonymous Users or Public, set the `fileUpload` parameter in the [Parse Server Options](https://parseplatform.org/parse-server/api/master/ParseServerOptions.html). [#7071](https://github.com/parse-community/parse-server/pull/7071). Thanks to [dblythy](https://github.com/dblythy).
-___
-- IMPROVE: Optimize queries on classes with pointer permissions. [#7061](https://github.com/parse-community/parse-server/pull/7061). Thanks to [Pedro Diaz](https://github.com/pdiaz)
-- FIX: request.context for afterFind triggers. [#7078](https://github.com/parse-community/parse-server/pull/7078). Thanks to [dblythy](https://github.com/dblythy)
-- NEW: Added convenience method Parse.Cloud.sendEmail(...) to send email via email adapter in Cloud Code. [#7089](https://github.com/parse-community/parse-server/pull/7089). Thanks to [dblythy](https://github.com/dblythy)
-- FIX: Winston Logger interpolating stdout to console [#7114](https://github.com/parse-community/parse-server/pull/7114). Thanks to [dplewis](https://github.com/dplewis)
-- NEW: LiveQuery support for $and, $nor, $containedBy, $geoWithin, $geoIntersects queries [#7113](https://github.com/parse-community/parse-server/pull/7113). Thanks to [dplewis](https://github.com/dplewis)
-- NEW: Supporting patterns in LiveQuery server's config parameter `classNames` [#7131](https://github.com/parse-community/parse-server/pull/7131). Thanks to [Nes-si](https://github.com/Nes-si)
+### Security Fixes
+- Strip out sessionToken when LiveQuery is used on Parse.User (Daniel Blyth) [GHSA-7pr3-p5fm-8r9x](https://github.com/parse-community/parse-server/security/advisories/GHSA-7pr3-p5fm-8r9x)
 
-### 4.5.0
+# 4.10.3
+
+## Security Fixes
+- Validate `explain` query parameter to avoid a server crash due to MongoDB bug [NODE-3463](https://jira.mongodb.org/browse/NODE-3463) (Kartal Kaan Bozdogan) [GHSA-xqp8-w826-hh6x](https://github.com/parse-community/parse-server/security/advisories/GHSA-xqp8-w826-hh6x)
+
+# 4.10.2
+[Full Changelog](https://github.com/parse-community/parse-server/compare/4.10.1...4.10.2)
+
+## Fixes
+- Move graphql-tag from devDependencies to dependencies (Antonio Davi Macedo Coelho de Castro) [#7183](https://github.com/parse-community/parse-server/pull/7183)
+
+# 4.10.1
+[Full Changelog](https://github.com/parse-community/parse-server/compare/4.10.0...4.10.1)
+
+## Security Fixes
+- Updated to Parse JS SDK 3.3.0 and other security fixes (Manuel Trezza) [#7508](https://github.com/parse-community/parse-server/pull/7508)
+
+> ⚠️ This includes a security fix of the Parse JS SDK where `logIn` will default to `POST` instead of `GET` method. This may require changes in your deployment before you upgrade to this release, see the Parse JS SDK 3.0.0 [release notes](https://github.com/parse-community/Parse-SDK-JS/releases/tag/3.0.0).
+
+# 4.10.0
+[Full Changelog](https://github.com/parse-community/parse-server/compare/4.5.2...4.10.0)
+
+*Versions >4.5.2 and <4.10.0 are skipped.*
+
+> ⚠️ A security incident caused a number of incorrect version tags to be pushed to the Parse Server repository. These version tags linked to a personal fork of a contributor who had write access to the repository. The code to which these tags linked has not been reviewed or approved by Parse Platform. Even though no releases were published with these incorrect versions, it was possible to define a Parse Server dependency that pointed to these version tags, for example if you defined this dependency:
+> ```js
+> "parse-server": "git@github.com:parse-community/parse-server.git#4.9.3"
+> ```
+>
+> We have since deleted the incorrect version tags, but they may still show up if your personal fork on GitHub or locally. We do not know when these tags have been pushed to the Parse Server repository, but we first became aware of this issue on July 21, 2021. We are not aware of any malicious code or concerns related to privacy, security or legality (e.g. proprietary code). However, it has been reported that some functionality does not work as expected and the introduction of security vulnerabilities cannot be ruled out.
+>
+> You may be also affected if you used the Bitnami image for Parse Server. Bitnami picked up the incorrect version tag `4.9.3` and published a new Bitnami image for Parse Server.
+>
+>**If you are using any of the affected versions, we urgently recommend to upgrade to version `4.10.0`.**
+
+# 4.5.2
+[Full Changelog](https://github.com/parse-community/parse-server/compare/4.5.0...4.5.2)
+
+## Security Fixes
+- SECURITY FIX: Fixes incorrect session property `authProvider: password` of anonymous users. When signing up an anonymous user, the session field `createdWith` indicates incorrectly that the session has been created using username and password with `authProvider: password`, instead of an anonymous sign-up with `authProvider: anonymous`. This fixes the issue by setting the correct `authProvider: anonymous` for future sign-ups of anonymous users. This fix does not fix incorrect `authProvider: password` for existing sessions of anonymous users. Consider this if your app logic depends on the `authProvider` field. (Corey Baker) [GHSA-23r4-5mxp-c7g5](https://github.com/parse-community/parse-server/security/advisories/GHSA-23r4-5mxp-c7g5)
+
+# 4.5.1
+*This version was published by mistake and was deprecated.*
+
+# 4.5.0
 [Full Changelog](https://github.com/parse-community/parse-server/compare/4.4.0...4.5.0)
 
 __BREAKING CHANGES:__
