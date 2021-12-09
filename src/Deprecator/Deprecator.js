@@ -111,7 +111,7 @@ class Deprecator {
       ? `default will change to '${changeNewDefault}' in a future version.`
       : '';
     output += solution ? ` ${solution}` : '';
-    logger.warn(output);
+    // logger.warn(output);
   }
 }
 
