@@ -13,20 +13,6 @@ const passwordCrypto = require('../lib/password');
 const Config = require('../lib/Config');
 const cryptoUtils = require('../lib/cryptoUtils');
 
-function verifyACL(user) {
-  const ACL = user.getACL();
-  expect(ACL.getReadAccess(user)).toBe(true);
-  expect(ACL.getWriteAccess(user)).toBe(true);
-  expect(ACL.getPublicReadAccess()).toBe(true);
-  expect(ACL.getPublicWriteAccess()).toBe(false);
-  const perms = ACL.permissionsById;
-  expect(Object.keys(perms).length).toBe(2);
-  expect(perms[user.id].read).toBe(true);
-  expect(perms[user.id].write).toBe(true);
-  expect(perms['*'].read).toBe(true);
-  expect(perms['*'].write).not.toBe(true);
-}
-
 describe('Parse.User testing', () => {
   it('user sign up class method', async done => {
     const user = await Parse.User.signUp('asdf', 'zxcv');
@@ -86,7 +72,9 @@ describe('Parse.User testing', () => {
       })
       .catch(err => {
         expect(err.status).toBe(404);
-        expect(err.text).toMatch('{"code":101,"error":"Invalid username/password."}');
+        expect(err.text).toMatch(
+          `{"code":${Parse.Error.OBJECT_NOT_FOUND},"error":"Invalid username/password."}`
+        );
         done();
       });
   });
@@ -113,7 +101,9 @@ describe('Parse.User testing', () => {
       })
       .catch(err => {
         expect(err.status).toBe(404);
-        expect(err.text).toMatch('{"code":101,"error":"Invalid username/password."}');
+        expect(err.text).toMatch(
+          `{"code":${Parse.Error.OBJECT_NOT_FOUND},"error":"Invalid username/password."}`
+        );
         done();
       });
   });
@@ -146,7 +136,17 @@ describe('Parse.User testing', () => {
     await Parse.User.signUp('asdf', 'zxcv');
     const user = await Parse.User.logIn('asdf', 'zxcv');
     equal(user.get('username'), 'asdf');
-    verifyACL(user);
+    const ACL = user.getACL();
+    expect(ACL.getReadAccess(user)).toBe(true);
+    expect(ACL.getWriteAccess(user)).toBe(true);
+    expect(ACL.getPublicReadAccess()).toBe(true);
+    expect(ACL.getPublicWriteAccess()).toBe(false);
+    const perms = ACL.permissionsById;
+    expect(Object.keys(perms).length).toBe(2);
+    expect(perms[user.id].read).toBe(true);
+    expect(perms[user.id].write).toBe(true);
+    expect(perms['*'].read).toBe(true);
+    expect(perms['*'].write).not.toBe(true);
     done();
   });
 
@@ -238,6 +238,7 @@ describe('Parse.User testing', () => {
   });
 
   it_only_db('mongo')('should let legacy users without ACL login', async () => {
+    await reconfigureServer();
     const databaseURI = 'mongodb://localhost:27017/parseServerMongoAdapterTestDatabase';
     const adapter = new MongoStorageAdapter({
       collectionPrefix: 'test_',
@@ -246,6 +247,7 @@ describe('Parse.User testing', () => {
     await adapter.connect();
     await adapter.database.dropDatabase();
     delete adapter.connectionPromise;
+    Config.get(Parse.applicationId).schemaCache.clear();
 
     const user = new Parse.User();
     await user.signUp({
@@ -826,8 +828,9 @@ describe('Parse.User testing', () => {
     done();
   });
 
-  it('user modified while saving', done => {
+  it('user modified while saving', async done => {
     Parse.Object.disableSingleInstance();
+    await reconfigureServer();
     const user = new Parse.User();
     user.set('username', 'alice');
     user.set('password', 'password');
@@ -2911,7 +2914,8 @@ describe('Parse.User testing', () => {
       });
   });
 
-  it('should send email when upgrading from anon', done => {
+  it('should send email when upgrading from anon', async done => {
+    await reconfigureServer();
     let emailCalled = false;
     let emailOptions;
     const emailAdapter = {
@@ -3901,6 +3905,7 @@ describe('Parse.User testing', () => {
   });
 
   it('should throw OBJECT_NOT_FOUND instead of SESSION_MISSING when using masterKey', async () => {
+    await reconfigureServer();
     // create a fake user (just so we simulate an object not found)
     const non_existent_user = Parse.User.createWithoutData('fake_id');
     try {
@@ -3927,6 +3932,64 @@ describe('Parse.User testing', () => {
     } catch (e) {
       expect(e.code).toBe(Parse.Error.SESSION_MISSING);
     }
+  });
+
+  it('should throw when enforcePrivateUsers is invalid', async () => {
+    const options = [[], 'a', 0, {}];
+    for (const option of options) {
+      await expectAsync(reconfigureServer({ enforcePrivateUsers: option })).toBeRejected();
+    }
+  });
+
+  it('user login with enforcePrivateUsers', async done => {
+    await reconfigureServer({ enforcePrivateUsers: true });
+    await Parse.User.signUp('asdf', 'zxcv');
+    const user = await Parse.User.logIn('asdf', 'zxcv');
+    equal(user.get('username'), 'asdf');
+    const ACL = user.getACL();
+    expect(ACL.getReadAccess(user)).toBe(true);
+    expect(ACL.getWriteAccess(user)).toBe(true);
+    expect(ACL.getPublicReadAccess()).toBe(false);
+    expect(ACL.getPublicWriteAccess()).toBe(false);
+    const perms = ACL.permissionsById;
+    expect(Object.keys(perms).length).toBe(1);
+    expect(perms[user.id].read).toBe(true);
+    expect(perms[user.id].write).toBe(true);
+    expect(perms['*']).toBeUndefined();
+    done();
+  });
+
+  describe('issue #4897', () => {
+    it_only_db('mongo')('should be able to login with a legacy user (no ACL)', async () => {
+      // This issue is a side effect of the locked users and legacy users which don't have ACL's
+      // In this scenario, a legacy user wasn't be able to login as there's no ACL on it
+      await reconfigureServer();
+      const database = Config.get(Parse.applicationId).database;
+      const collection = await database.adapter._adaptiveCollection('_User');
+      await collection.insertOne({
+        _id: 'ABCDEF1234',
+        name: '<some_name>',
+        email: '<some_email>',
+        username: '<some_username>',
+        _hashed_password: '<some_password>',
+        _auth_data_facebook: {
+          id: '8675309',
+          access_token: 'jenny',
+        },
+        sessionToken: '<some_session_token>',
+      });
+      const provider = getMockFacebookProvider();
+      Parse.User._registerAuthenticationProvider(provider);
+      const model = await Parse.User._logInWith('facebook', {});
+      expect(model.id).toBe('ABCDEF1234');
+      ok(model instanceof Parse.User, 'Model should be a Parse.User');
+      strictEqual(Parse.User.current(), model);
+      ok(model.extended(), 'Should have used subclass.');
+      strictEqual(provider.authData.id, provider.synchronizedUserId);
+      strictEqual(provider.authData.access_token, provider.synchronizedAuthToken);
+      strictEqual(provider.authData.expiration_date, provider.synchronizedExpiration);
+      ok(model._isLinked('facebook'), 'User should be linked to facebook');
+    });
   });
 
   it('should strip out authdata in LiveQuery', async () => {
@@ -3976,44 +4039,13 @@ describe('Parse.User testing', () => {
     client.close();
     await new Promise(resolve => setTimeout(resolve, 10));
   });
-
-  describe('issue #4897', () => {
-    it_only_db('mongo')('should be able to login with a legacy user (no ACL)', async () => {
-      // This issue is a side effect of the locked users and legacy users which don't have ACL's
-      // In this scenario, a legacy user wasn't be able to login as there's no ACL on it
-      const database = Config.get(Parse.applicationId).database;
-      const collection = await database.adapter._adaptiveCollection('_User');
-      await collection.insertOne({
-        _id: 'ABCDEF1234',
-        name: '<some_name>',
-        email: '<some_email>',
-        username: '<some_username>',
-        _hashed_password: '<some_password>',
-        _auth_data_facebook: {
-          id: '8675309',
-          access_token: 'jenny',
-        },
-        sessionToken: '<some_session_token>',
-      });
-      const provider = getMockFacebookProvider();
-      Parse.User._registerAuthenticationProvider(provider);
-      const model = await Parse.User._logInWith('facebook', {});
-      expect(model.id).toBe('ABCDEF1234');
-      ok(model instanceof Parse.User, 'Model should be a Parse.User');
-      strictEqual(Parse.User.current(), model);
-      ok(model.extended(), 'Should have used subclass.');
-      strictEqual(provider.authData.id, provider.synchronizedUserId);
-      strictEqual(provider.authData.access_token, provider.synchronizedAuthToken);
-      strictEqual(provider.authData.expiration_date, provider.synchronizedExpiration);
-      ok(model._isLinked('facebook'), 'User should be linked to facebook');
-    });
-  });
 });
 
 describe('Security Advisory GHSA-8w3j-g983-8jh5', function () {
   it_only_db('mongo')(
     'should validate credentials first and check if account already linked afterwards ()',
     async done => {
+      await reconfigureServer();
       // Add User to Database with authData
       const database = Config.get(Parse.applicationId).database;
       const collection = await database.adapter._adaptiveCollection('_User');
@@ -4052,6 +4084,7 @@ describe('Security Advisory GHSA-8w3j-g983-8jh5', function () {
   );
   it_only_db('mongo')('should ignore authData field', async () => {
     // Add User to Database with authData
+    await reconfigureServer();
     const database = Config.get(Parse.applicationId).database;
     const collection = await database.adapter._adaptiveCollection('_User');
     await collection.insertOne({
@@ -4074,5 +4107,133 @@ describe('Security Advisory GHSA-8w3j-g983-8jh5', function () {
     const query = new Parse.Query(Parse.User);
     const user = await query.get('1234ABCDEF', { useMasterKey: true });
     expect(user.get('authData')).toEqual({ custom: { id: 'linkedID' } });
+  });
+});
+
+describe('login as other user', () => {
+  it('allows creating a session for another user with the master key', async done => {
+    await Parse.User.signUp('some_user', 'some_password');
+    const userId = Parse.User.current().id;
+    await Parse.User.logOut();
+
+    try {
+      const response = await request({
+        method: 'POST',
+        url: 'http://localhost:8378/1/loginAs',
+        headers: {
+          'X-Parse-Application-Id': Parse.applicationId,
+          'X-Parse-REST-API-Key': 'rest',
+          'X-Parse-Master-Key': 'test',
+        },
+        body: {
+          userId,
+        },
+      });
+
+      expect(response.data.sessionToken).toBeDefined();
+    } catch (err) {
+      fail(`no request should fail: ${JSON.stringify(err)}`);
+      done();
+    }
+
+    const sessionsQuery = new Parse.Query(Parse.Session);
+    const sessionsAfterRequest = await sessionsQuery.find({ useMasterKey: true });
+    expect(sessionsAfterRequest.length).toBe(1);
+
+    done();
+  });
+
+  it('rejects creating a session for another user if the user does not exist', async done => {
+    try {
+      await request({
+        method: 'POST',
+        url: 'http://localhost:8378/1/loginAs',
+        headers: {
+          'X-Parse-Application-Id': Parse.applicationId,
+          'X-Parse-REST-API-Key': 'rest',
+          'X-Parse-Master-Key': 'test',
+        },
+        body: {
+          userId: 'bogus-user',
+        },
+      });
+
+      fail('Request should fail without a valid user ID');
+      done();
+    } catch (err) {
+      expect(err.data.code).toBe(Parse.Error.OBJECT_NOT_FOUND);
+      expect(err.data.error).toBe('user not found');
+    }
+
+    const sessionsQuery = new Parse.Query(Parse.Session);
+    const sessionsAfterRequest = await sessionsQuery.find({ useMasterKey: true });
+    expect(sessionsAfterRequest.length).toBe(0);
+
+    done();
+  });
+
+  it('rejects creating a session for another user with invalid parameters', async done => {
+    const invalidUserIds = [undefined, null, ''];
+
+    for (const invalidUserId of invalidUserIds) {
+      try {
+        await request({
+          method: 'POST',
+          url: 'http://localhost:8378/1/loginAs',
+          headers: {
+            'X-Parse-Application-Id': Parse.applicationId,
+            'X-Parse-REST-API-Key': 'rest',
+            'X-Parse-Master-Key': 'test',
+          },
+          body: {
+            userId: invalidUserId,
+          },
+        });
+
+        fail('Request should fail without a valid user ID');
+        done();
+      } catch (err) {
+        expect(err.data.code).toBe(Parse.Error.INVALID_VALUE);
+        expect(err.data.error).toBe('userId must not be empty, null, or undefined');
+      }
+
+      const sessionsQuery = new Parse.Query(Parse.Session);
+      const sessionsAfterRequest = await sessionsQuery.find({ useMasterKey: true });
+      expect(sessionsAfterRequest.length).toBe(0);
+    }
+
+    done();
+  });
+
+  it('rejects creating a session for another user without the master key', async done => {
+    await Parse.User.signUp('some_user', 'some_password');
+    const userId = Parse.User.current().id;
+    await Parse.User.logOut();
+
+    try {
+      await request({
+        method: 'POST',
+        url: 'http://localhost:8378/1/loginAs',
+        headers: {
+          'X-Parse-Application-Id': Parse.applicationId,
+          'X-Parse-REST-API-Key': 'rest',
+        },
+        body: {
+          userId,
+        },
+      });
+
+      fail('Request should fail without the master key');
+      done();
+    } catch (err) {
+      expect(err.data.code).toBe(Parse.Error.OPERATION_FORBIDDEN);
+      expect(err.data.error).toBe('master key is required');
+    }
+
+    const sessionsQuery = new Parse.Query(Parse.Session);
+    const sessionsAfterRequest = await sessionsQuery.find({ useMasterKey: true });
+    expect(sessionsAfterRequest.length).toBe(0);
+
+    done();
   });
 });
