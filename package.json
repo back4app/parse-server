@@ -96,5 +96,6 @@
     "type": "opencollective",
     "url": "https://opencollective.com/parse-server",
     "logo": "https://opencollective.com/parse-server/logo.txt?reverse=true&variant=binary"
-  }
+  },
+  "resolutions": { "redis": "3.1.2", "**/redis": "3.1.2" }
 }
