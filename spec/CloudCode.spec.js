@@ -216,6 +216,21 @@ describe('Cloud Code', () => {
     );
   });
 
+  it('test beforeSave with invalid field', async () => {
+    Parse.Cloud.beforeSave('BeforeSaveChanged', function (req) {
+      req.object.set('length', 0);
+    });
+
+    const obj = new Parse.Object('BeforeSaveChanged');
+    obj.set('foo', 'bar');
+    try {
+      await obj.save();
+      fail('should not succeed');
+    } catch (e) {
+      expect(e.message).toBe('Invalid field name: length.');
+    }
+  });
+
   it("test beforeSave changed object fail doesn't change object", async function () {
     Parse.Cloud.beforeSave('BeforeSaveChanged', function (req) {
       if (req.object.has('fail')) {
@@ -1633,9 +1648,8 @@ describe('Cloud Code', () => {
 
     it('should set the message / success on the job', done => {
       Parse.Cloud.job('myJob', req => {
-        req.message('hello');
         const promise = req
-          .message()
+          .message('hello')
           .then(() => {
             return getJobStatus(req.jobId);
           })
@@ -1716,9 +1730,15 @@ describe('Cloud Code', () => {
         throw new Parse.Error(101, 'Something went wrong');
       });
       const job = await Parse.Cloud.startJob('myJobError');
-      const jobStatus = await Parse.Cloud.getJobStatus(job);
+      let jobStatus, status;
+      while (status !== 'failed') {
+        if (jobStatus) {
+          await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        jobStatus = await Parse.Cloud.getJobStatus(job);
+        status = jobStatus.get('status');
+      }
       expect(jobStatus.get('message')).toEqual('Something went wrong');
-      expect(jobStatus.get('status')).toEqual('failed');
     });
 
     function getJobStatus(jobId) {
