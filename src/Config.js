@@ -78,6 +78,7 @@ export class Config {
     security,
     enforcePrivateUsers,
     schema,
+    allowOldAuthDataToken,
   }) {
     if (masterKey === readOnlyMasterKey) {
       throw new Error('masterKey and readOnlyMasterKey should be different');
@@ -116,11 +117,18 @@ export class Config {
     this.validateSecurityOptions(security);
     this.validateSchemaOptions(schema);
     this.validateEnforcePrivateUsers(enforcePrivateUsers);
+    this.validateAllowOldAuthDataToken(allowOldAuthDataToken);
   }
 
   static validateEnforcePrivateUsers(enforcePrivateUsers) {
     if (typeof enforcePrivateUsers !== 'boolean') {
       throw 'Parse Server option enforcePrivateUsers must be a boolean.';
+    }
+  }
+
+  static validateAllowOldAuthDataToken(allowOldAuthDataToken) {
+    if (typeof allowOldAuthDataToken !== 'boolean') {
+      throw 'Parse Server option allowOldAuthDataToken must be a boolean.';
     }
   }
 

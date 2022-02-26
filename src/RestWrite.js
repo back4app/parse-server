@@ -554,13 +554,15 @@ RestWrite.prototype.handleAuthData = async function (authData) {
 
       // Force to validate all provided authData on login
       // on update only validate mutated ones
-      const res = await Auth.handleAuthDataValidation(
-        isLogin ? authData : mutatedAuthData,
-        this,
-        userResult
-      );
-      this.data.authData = res.authData;
-      this.authDataResponse = res.authDataResponse;
+      if (hasMutatedAuthData || !this.config.allowOldAuthDataToken) {
+        const res = await Auth.handleAuthDataValidation(
+          isLogin ? authData : mutatedAuthData,
+          this,
+          userResult
+        );
+        this.data.authData = res.authData;
+        this.authDataResponse = res.authDataResponse;
+      }
 
       // IF we are in login we'll skip the database operation / beforeSave / afterSave etc...
       // we need to set it up there.

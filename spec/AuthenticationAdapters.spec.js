@@ -1734,7 +1734,9 @@ describe('Apple Game Center Auth adapter', () => {
       await gcenter.validateAuthData(authData);
       fail();
     } catch (e) {
-      expect(e.message).toBe('Apple Game Center - invalid publicKeyUrl: http://static.gc.apple.com/public-key/gc-prod-4.cer');
+      expect(e.message).toBe(
+        'Apple Game Center - invalid publicKeyUrl: http://static.gc.apple.com/public-key/gc-prod-4.cer'
+      );
     }
   });
 });
@@ -2414,7 +2416,7 @@ describe('Auth Adapter features', () => {
     spyOn(modernAdapter, 'validateUpdate').and.resolveTo({});
     spyOn(modernAdapter, 'validateLogin').and.resolveTo({});
 
-    await reconfigureServer({ auth: { modernAdapter } });
+    await reconfigureServer({ auth: { modernAdapter }, allowOldAuthDataToken: false });
     const user = new Parse.User();
 
     // Signup
@@ -2528,6 +2530,7 @@ describe('Auth Adapter features', () => {
     spyOn(baseAdapter, 'validateAuthData').and.resolveTo({});
     await reconfigureServer({
       auth: { baseAdapter2, baseAdapter },
+      allowOldAuthDataToken: false,
     });
 
     const user = new Parse.User();

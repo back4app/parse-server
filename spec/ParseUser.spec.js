@@ -13,6 +13,63 @@ const passwordCrypto = require('../lib/password');
 const Config = require('../lib/Config');
 const cryptoUtils = require('../lib/cryptoUtils');
 
+describe('allowOldAuthDataToken option', () => {
+  it('should accept true value', async () => {
+    const logger = require('../lib/logger').logger;
+    const logSpy = spyOn(logger, 'warn').and.callFake(() => {});
+    await reconfigureServer({ allowOldAuthDataToken: true });
+    expect(Config.get(Parse.applicationId).allowOldAuthDataToken).toBe(true);
+    expect(
+      logSpy.calls
+        .all()
+        .filter(
+          log =>
+            log.args[0] ===
+            `DeprecationWarning: The Parse Server option 'allowOldAuthDataToken' default will change to 'false' in a future version.`
+        ).length
+    ).toEqual(0);
+  });
+
+  it('should accept false value', async () => {
+    const logger = require('../lib/logger').logger;
+    const logSpy = spyOn(logger, 'warn').and.callFake(() => {});
+    await reconfigureServer({ allowOldAuthDataToken: false });
+    expect(Config.get(Parse.applicationId).allowOldAuthDataToken).toBe(false);
+    expect(
+      logSpy.calls
+        .all()
+        .filter(
+          log =>
+            log.args[0] ===
+            `DeprecationWarning: The Parse Server option 'allowOldAuthDataToken' default will change to 'false' in a future version.`
+        ).length
+    ).toEqual(0);
+  });
+
+  it('should default true', async () => {
+    const logger = require('../lib/logger').logger;
+    const logSpy = spyOn(logger, 'warn').and.callFake(() => {});
+    await reconfigureServer({});
+    expect(Config.get(Parse.applicationId).allowOldAuthDataToken).toBe(true);
+    expect(
+      logSpy.calls
+        .all()
+        .filter(
+          log =>
+            log.args[0] ===
+            `DeprecationWarning: The Parse Server option 'allowOldAuthDataToken' default will change to 'false' in a future version.`
+        ).length
+    ).toEqual(1);
+  });
+
+  it('should enforce boolean values', async () => {
+    const options = [[], 'a', '', 0, 1, {}, 'true', 'false'];
+    for (const option of options) {
+      await expectAsync(reconfigureServer({ allowOldAuthDataToken: option })).toBeRejected();
+    }
+  });
+});
+
 describe('Parse.User testing', () => {
   it('user sign up class method', async done => {
     const user = await Parse.User.signUp('asdf', 'zxcv');
@@ -1792,7 +1849,37 @@ describe('Parse.User testing', () => {
     });
   });
 
-  it('should not allow login with old authData token', async () => {
+  it('should allow login with old authData token by default', async () => {
+    const provider = {
+      authData: {
+        id: '12345',
+        access_token: 'token',
+      },
+      restoreAuthentication: function () {
+        return true;
+      },
+      deauthenticate: function () {
+        provider.authData = {};
+      },
+      authenticate: function (options) {
+        options.success(this, provider.authData);
+      },
+      getAuthType: function () {
+        return 'shortLivedAuth';
+      },
+    };
+    defaultConfiguration.auth.shortLivedAuth.setValidAccessToken('token');
+    Parse.User._registerAuthenticationProvider(provider);
+    await Parse.User._logInWith('shortLivedAuth', {});
+    // Simulate a remotely expired token (like a short lived one)
+    // In this case, we want success as it was valid once.
+    // If the client needs an updated one, do lock the user out
+    defaultConfiguration.auth.shortLivedAuth.setValidAccessToken('otherToken');
+    await Parse.User._logInWith('shortLivedAuth', {});
+  });
+
+  it('should not allow login with old authData token when allowOldAuthDataToken is set to false', async () => {
+    await reconfigureServer({ allowOldAuthDataToken: false });
     const provider = {
       authData: {
         id: '12345',

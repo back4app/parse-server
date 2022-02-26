@@ -252,6 +252,9 @@ export interface ParseServerOptions {
   /* Set to true if new users should be created without public read and write access.
   :DEFAULT: false */
   enforcePrivateUsers: ?boolean;
+  /* Allow login with old authData token.
+  :DEFAULT: true */
+  allowOldAuthDataToken: ?boolean;
 }
 
 export interface SecurityOptions {

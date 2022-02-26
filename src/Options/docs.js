@@ -4,6 +4,7 @@
  * @property {Boolean} allowClientClassCreation Enable (or disable) client class creation, defaults to true
  * @property {Boolean} allowCustomObjectId Enable (or disable) custom objectId
  * @property {String[]} allowHeaders Add headers to Access-Control-Allow-Headers
+ * @property {Boolean} allowOldAuthDataToken Allow login with old authData token.
  * @property {String} allowOrigin Sets the origin to Access-Control-Allow-Origin
  * @property {Adapter<AnalyticsAdapter>} analyticsAdapter Adapter module for the analytics
  * @property {String} appId Your Parse Application ID
@@ -67,6 +68,7 @@
  * @property {String} restAPIKey Key for REST calls
  * @property {Boolean} revokeSessionOnPasswordReset When a user changes their password, either through the reset password email or while logged in, all sessions are revoked if this is true. Set to false if you don't want to revoke sessions.
  * @property {Boolean} scheduledPush Configuration for push scheduling, defaults to false.
+ * @property {SchemaOptions} schema Rest representation on Parse.Schema https://docs.parseplatform.org/rest/guide/#adding-a-schema
  * @property {SecurityOptions} security The security options to identify and report weak security settings.
  * @property {Function} serverCloseComplete Callback when server has closed
  * @property {Function} serverStartComplete Callback when server has started

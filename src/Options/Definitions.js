@@ -28,6 +28,12 @@ module.exports.ParseServerOptions = {
     help: 'Add headers to Access-Control-Allow-Headers',
     action: parsers.arrayParser,
   },
+  allowOldAuthDataToken: {
+    env: 'PARSE_SERVER_ALLOW_OLD_AUTH_DATA_TOKEN',
+    help: 'Allow login with old authData token.',
+    action: parsers.booleanParser,
+    default: true,
+  },
   allowOrigin: {
     env: 'PARSE_SERVER_ALLOW_ORIGIN',
     help: 'Sets the origin to Access-Control-Allow-Origin',
