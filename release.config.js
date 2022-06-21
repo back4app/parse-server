@@ -88,6 +88,16 @@ async function config() {
         labels: ['type:ci'],
         releasedLabels: ['state:released<%= nextRelease.channel ? `-\${nextRelease.channel}` : "" %>']
       }],
+      // Back-merge module runs last because if it fails it should not impede the release process
+      [
+        "@saithodev/semantic-release-backmerge",
+        {
+          "branches": [
+            { from: "beta", to: "alpha" },
+            { from: "release", to: "beta" },
+          ]
+        }
+      ],
     ],
   };
 
