@@ -45,7 +45,7 @@
     "lodash": "4.17.21",
     "lru-cache": "7.10.1",
     "mime": "3.0.0",
-    "mongodb": "4.6.0",
+    "mongodb": "3.7.3",
     "multer": "1.4.1",
     "mustache": "4.2.0",
     "parse": "3.4.2",
