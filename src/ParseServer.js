@@ -481,7 +481,7 @@ function configureListeners(parseServer) {
     server.close();
     parseServer.handleShutdown();
   };
-  //process.on('SIGTERM', handleShutdown);
+  process.on('SIGTERM', handleShutdown);
   process.on('SIGINT', handleShutdown);
 }
 
