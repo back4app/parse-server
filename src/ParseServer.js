@@ -476,10 +476,14 @@ function configureListeners(parseServer) {
   };
 
   const handleShutdown = function () {
-    process.stdout.write('Termination signal received. Shutting down.');
-    destroyAliveConnections();
-    server.close();
-    parseServer.handleShutdown();
+    try {
+      process.stdout.write('Termination signal received. Shutting down.');
+      destroyAliveConnections();
+      server.close();
+      parseServer.handleShutdown();
+    } catch (err) {
+      process.stdout.write('Something went wrong... ', err.message);
+    }
   };
   process.on('SIGTERM', handleShutdown);
   process.on('SIGINT', handleShutdown);
