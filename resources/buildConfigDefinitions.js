@@ -11,6 +11,37 @@
  */
 const parsers = require('../src/Options/parsers');
 
+/** The types of nested options. */
+const nestedOptionTypes = [
+  'CustomPagesOptions',
+  'DatabaseOptions',
+  'FileUploadOptions',
+  'IdempotencyOptions',
+  'Object',
+  'PagesCustomUrlsOptions',
+  'PagesOptions',
+  'PagesRoute',
+  'PasswordPolicyOptions',
+  'SecurityOptions',
+];
+
+/** The prefix of environment variables for nested options. */
+const nestedOptionEnvPrefix = {
+  'AccountLockoutOptions' : 'PARSE_SERVER_ACCOUNT_LOCKOUT_',
+  'CustomPagesOptions' : 'PARSE_SERVER_CUSTOM_PAGES_',
+  'DatabaseOptions': 'PARSE_SERVER_DATABASE_',
+  'FileUploadOptions' : 'PARSE_SERVER_FILE_UPLOAD_',
+  'IdempotencyOptions' : 'PARSE_SERVER_EXPERIMENTAL_IDEMPOTENCY_',
+  'LiveQueryOptions' : 'PARSE_SERVER_LIVEQUERY_',
+  'LiveQueryServerOptions' : 'PARSE_LIVE_QUERY_SERVER_',
+  'PagesCustomUrlsOptions' : 'PARSE_SERVER_PAGES_CUSTOM_URL_',
+  'PagesOptions' : 'PARSE_SERVER_PAGES_',
+  'PagesRoute': 'PARSE_SERVER_PAGES_ROUTE_',
+  'ParseServerOptions' : 'PARSE_SERVER_',
+  'PasswordPolicyOptions' : 'PARSE_SERVER_PASSWORD_POLICY_',
+  'SecurityOptions': 'PARSE_SERVER_SECURITY_',
+};
+
 function last(array) {
   return array[array.length - 1];
 }
@@ -40,17 +71,8 @@ function getCommentValue(comment) {
 }
 
 function getENVPrefix(iface) {
-  const options = {
-    'ParseServerOptions' : 'PARSE_SERVER_',
-    'CustomPagesOptions' : 'PARSE_SERVER_CUSTOM_PAGES_',
-    'LiveQueryServerOptions' : 'PARSE_LIVE_QUERY_SERVER_',
-    'LiveQueryOptions' : 'PARSE_SERVER_LIVEQUERY_',
-    'IdempotencyOptions' : 'PARSE_SERVER_EXPERIMENTAL_IDEMPOTENCY_',
-    'AccountLockoutOptions' : 'PARSE_SERVER_ACCOUNT_LOCKOUT_',
-    'PasswordPolicyOptions' : 'PARSE_SERVER_PASSWORD_POLICY_'
-  }
-  if (options[iface.id.name]) {
-    return options[iface.id.name]
+  if (nestedOptionEnvPrefix[iface.id.name]) {
+    return nestedOptionEnvPrefix[iface.id.name]
   }
 }
 
@@ -150,6 +172,20 @@ function parseDefaultValue(elt, value, t) {
     literalValue = t.arrayExpression(array.map((value) => {
       if (typeof value == 'string') {
         return t.stringLiteral(value);
+      } else if (typeof value == 'number') {
+        return t.numericLiteral(value);
+      } else if (typeof value == 'object') {
+        const object = parsers.objectParser(value);
+        const props = Object.entries(object).map(([k, v]) => {
+          if (typeof v == 'string') {
+            return t.objectProperty(t.identifier(k), t.stringLiteral(v));
+          } else if (typeof v == 'number') {
+            return t.objectProperty(t.identifier(k), t.numericLiteral(v));
+          } else if (typeof v == 'boolean') {
+            return t.objectProperty(t.identifier(k), t.booleanLiteral(v));
+          }
+        });
+        return t.objectExpression(props);
       } else {
         throw new Error('Unable to parse array');
       }
@@ -163,14 +199,8 @@ function parseDefaultValue(elt, value, t) {
     if (type == 'NumberOrBoolean') {
       literalValue = t.numericLiteral(parsers.numberOrBoolParser('')(value));
     }
-    if (type == 'CustomPagesOptions') {
-      const object = parsers.objectParser(value);
-      const props = Object.keys(object).map((key) => {
-        return t.objectProperty(key, object[value]);
-      });
-      literalValue = t.objectExpression(props);
-    }
-    if (type == 'IdempotencyOptions') {
+
+    if (nestedOptionTypes.includes(type)) {
       const object = parsers.objectParser(value);
       const props = Object.keys(object).map((key) => {
         return t.objectProperty(key, object[value]);
@@ -220,7 +250,9 @@ function inject(t, list) {
       type = elt.typeAnnotation.id.name;
     }
     if (type === 'Array') {
-      type = `${elt.typeAnnotation.elementType.type.replace('TypeAnnotation', '')}[]`;
+      type = elt.typeAnnotation.elementType.id
+        ? `${elt.typeAnnotation.elementType.id.name}[]`
+        : `${elt.typeAnnotation.elementType.type.replace('TypeAnnotation', '')}[]`;
     }
     if (type === 'NumberOrBoolean') {
       type = 'Number|Boolean';
