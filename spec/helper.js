@@ -167,7 +167,6 @@ const reconfigureServer = (changedConfiguration = {}) => {
       });
       cache.clear();
       parseServer = ParseServer.start(newConfiguration);
-      parseServer.app.use(require('./testing-routes').router);
       parseServer.expressApp.use('/1', err => {
         console.error(err);
         fail('should not call next');
