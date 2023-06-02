@@ -88,6 +88,15 @@ async function config() {
         labels: ['type:ci'],
         releasedLabels: ['state:released<%= nextRelease.channel ? `-\${nextRelease.channel}` : "" %>']
       }],
+      [
+        "@saithodev/semantic-release-backmerge",
+        {
+          "branches": [
+            { from: "beta", to: "alpha" },
+            { from: "release", to: "beta" },
+          ]
+        }
+      ],
     ],
   };
 
