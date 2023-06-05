@@ -145,7 +145,8 @@
   },
 "resolutions": {
     "graphql": "16.6.0",
-    "**/graphql": "16.6.0"
+    "**/graphql": "16.6.0",
+    "redis": "3.1.2"
   },
   "bin": {
     "parse-server": "bin/parse-server"
