@@ -18,6 +18,11 @@ import type {
   FullQueryOptions,
 } from '../Adapters/Storage/StorageAdapter';
 
+const case_insensitive_username =
+  process.env.CREATE_INDEX_CASE_INSENSITIVE_USERNAME || false;
+const case_insensitive_email =
+  process.env.CREATE_INDEX_CASE_INSENSITIVE_EMAIL || false;
+
 function addWriteACL(query, acl) {
   const newQuery = _.cloneDeep(query);
   //Can't be any existing '_wperm' query, we don't allow client queries on that, no need to $and
@@ -1748,59 +1753,70 @@ class DatabaseController {
       schema.enforceClassExists('_Role')
     );
 
-    const usernameUniqueness = userClassPromise
-      .then(() =>
-        this.adapter.ensureUniqueness('_User', requiredUserFields, ['username'])
-      )
-      .catch((error) => {
-        logger.warn('Unable to ensure uniqueness for usernames: ', error);
-        throw error;
-      });
-
-    const usernameCaseInsensitiveIndex = userClassPromise
-      .then(() =>
-        this.adapter.ensureIndex(
-          '_User',
-          requiredUserFields,
-          ['username'],
-          'case_insensitive_username',
-          true
+    const promises = [];
+    if (case_insensitive_username) {
+      const usernameUniqueness = userClassPromise
+        .then(() =>
+          this.adapter.ensureUniqueness('_User', requiredUserFields, [
+            'username',
+          ])
         )
-      )
-      .catch((error) => {
-        logger.warn(
-          'Unable to create case insensitive username index: ',
-          error
-        );
-        throw error;
-      });
+        .catch((error) => {
+          logger.warn('Unable to ensure uniqueness for usernames: ', error);
+          throw error;
+        });
 
-    const emailUniqueness = userClassPromise
-      .then(() =>
-        this.adapter.ensureUniqueness('_User', requiredUserFields, ['email'])
-      )
-      .catch((error) => {
-        logger.warn(
-          'Unable to ensure uniqueness for user email addresses: ',
-          error
-        );
-        throw error;
-      });
+      promises.push(usernameUniqueness);
 
-    const emailCaseInsensitiveIndex = userClassPromise
-      .then(() =>
-        this.adapter.ensureIndex(
-          '_User',
-          requiredUserFields,
-          ['email'],
-          'case_insensitive_email',
-          true
+      const usernameCaseInsensitiveIndex = userClassPromise
+        .then(() =>
+          this.adapter.ensureIndex(
+            '_User',
+            requiredUserFields,
+            ['username'],
+            'case_insensitive_username',
+            true
+          )
         )
-      )
-      .catch((error) => {
-        logger.warn('Unable to create case insensitive email index: ', error);
-        throw error;
-      });
+        .catch((error) => {
+          logger.warn(
+            'Unable to create case insensitive username index: ',
+            error
+          );
+          throw error;
+        });
+      promises.push(usernameCaseInsensitiveIndex);
+    }
+    if (case_insensitive_email) {
+      const emailUniqueness = userClassPromise
+        .then(() =>
+          this.adapter.ensureUniqueness('_User', requiredUserFields, ['email'])
+        )
+        .catch((error) => {
+          logger.warn(
+            'Unable to ensure uniqueness for user email addresses: ',
+            error
+          );
+          throw error;
+        });
+      promises.push(emailUniqueness);
+      const emailCaseInsensitiveIndex = userClassPromise
+        .then(() =>
+          this.adapter.ensureIndex(
+            '_User',
+            requiredUserFields,
+            ['email'],
+            'case_insensitive_email',
+            true
+          )
+        )
+        .catch((error) => {
+          logger.warn('Unable to create case insensitive email index: ', error);
+          throw error;
+        });
+
+      promises.push(emailCaseInsensitiveIndex);
+    }
 
     const roleUniqueness = roleClassPromise
       .then(() =>
@@ -1811,21 +1827,16 @@ class DatabaseController {
         throw error;
       });
 
+    promises.push(roleUniqueness);
     const indexPromise = this.adapter.updateSchemaWithIndexes();
 
     // Create tables for volatile classes
     const adapterInit = this.adapter.performInitialization({
       VolatileClassesSchemas: SchemaController.VolatileClassesSchemas,
     });
-    return Promise.all([
-      usernameUniqueness,
-      usernameCaseInsensitiveIndex,
-      emailUniqueness,
-      emailCaseInsensitiveIndex,
-      roleUniqueness,
-      adapterInit,
-      indexPromise,
-    ]);
+    promises.push(adapterInit);
+    promises.push(indexPromise);
+    return Promise.all(promises);
   }
 
   static _validateQuery: (any) => void;
