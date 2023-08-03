@@ -11,6 +11,7 @@
     "bin/",
     "lib/",
     "public_html/",
+    "public/",
     "views/",
     "LICENSE",
     "NOTICE",
