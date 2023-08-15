@@ -7,12 +7,81 @@
 
 <head>
   <title>Email Verification</title>
+  <style>
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      background-color: #f0f0f0;
+    }
+
+    .verification-box {
+      text-align: center;
+      padding: 20px 15px;
+      border: 1px solid #ccc;
+      background-color: #fff;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    h1, input{
+      margin-bottom: 10px;
+    }
+
+    .content p {
+      margin-top: 10px;
+    }
+
+    .title {
+      font-size: 24px;
+      margin-bottom: 20px;
+    }
+
+    .text {
+      font-size: 18px;
+      margin-bottom: 20px;
+    }
+
+    div.powered-by {
+      margin-top: 35px;
+    }
+
+    .powered-by p {
+      font-size: 12px;
+      color: #999;
+      text-align: left;
+    }
+
+    .powered-by img {
+      height: 65px;
+      margin-top: 5px;
+      position: relative;
+    }
+
+    .button {
+      display: inline-block;
+      padding: 10px 20px;
+      background-color: #007bff;
+      color: #fff;
+      font-size: 16px;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+    }
+  </style>
 </head>
 
 <body>
-  <h1>{{appName}}</h1>
-  <h1>Email verified!</h1>
-  <p>Successfully verified your email for account: {{username}}.</p>
+  <div class="verification-box">
+    <div class="content">
+      <h1 class="title">{{appName}}</h1>
+      <h1>Email verified!</h1>
+      <p>Successfully verified your email for account: <b>{{username}}</b>.</p>
+    </div>
+    <div class="powered-by">
+      <img src="https://static.back4app.com/back4app-logo.png" />
+    </div>
+  </div>  
 </body>
 
 </html>
