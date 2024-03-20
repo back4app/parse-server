@@ -2,7 +2,7 @@
 var loadAdapter = require("../src/Adapters/AdapterLoader").loadAdapter;
 var FilesAdapter = require("parse-server-fs-adapter").default;
 var S3Adapter = require("parse-server-s3-adapter").default;
-var ParsePushAdapter = require("parse-server-push-adapter").default;
+var ParsePushAdapter = require("@parse/push-adapter").default;
 const Config = require('../src/Config');
 
 describe("AdapterLoader", ()=>{

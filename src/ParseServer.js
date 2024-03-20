@@ -55,7 +55,7 @@ import { AudiencesRouter }          from './Routers/AudiencesRouter';
 
 import DatabaseController       from './Controllers/DatabaseController';
 import SchemaCache              from './Controllers/SchemaCache';
-import ParsePushAdapter         from 'parse-server-push-adapter';
+import ParsePushAdapter         from '@parse/push-adapter';
 import MongoStorageAdapter      from './Adapters/Storage/Mongo/MongoStorageAdapter';
 import PostgresStorageAdapter   from './Adapters/Storage/Postgres/PostgresStorageAdapter';
 
