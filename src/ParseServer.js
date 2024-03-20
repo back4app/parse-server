@@ -57,7 +57,7 @@ import { ExportRouter }         from './Routers/ExportRouter';
 
 import DatabaseController       from './Controllers/DatabaseController';
 const SchemaController = require('./Controllers/SchemaController');
-import ParsePushAdapter         from 'parse-server-push-adapter';
+import ParsePushAdapter         from '@parse/push-adapter';
 import MongoStorageAdapter      from './Adapters/Storage/Mongo/MongoStorageAdapter';
 // Mutate the Parse object to add the Cloud Code handlers
 addParseCloud();
