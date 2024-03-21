@@ -25,7 +25,7 @@
     "@graphql-tools/stitch": "6.2.4",
     "@graphql-tools/utils": "6.2.4",
     "@parse/fs-files-adapter": "1.2.1",
-    "@parse/push-adapter": "4.1.0",
+    "@parse/push-adapter": "5.1.1",
     "adm-zip": "0.4.13",
     "apollo-server-express": "2.25.2",
     "archiver": "3.0.0",
