@@ -161,6 +161,9 @@ function mapperFor(elt, t) {
     if (type == 'NumberOrBoolean') {
       return wrap(t.identifier('numberOrBooleanParser'));
     }
+    if (type == 'NumberOrString') {
+      return t.callExpression(wrap(t.identifier('numberOrStringParser')), [t.stringLiteral(elt.name)]);
+    }
     if (type === 'StringOrStringArray') {
       return wrap(t.identifier('arrayParser'));
     }
@@ -212,6 +215,9 @@ function parseDefaultValue(elt, value, t) {
     if (type == 'NumberOrBoolean') {
       literalValue = t.numericLiteral(parsers.numberOrBoolParser('')(value));
     }
+    if (type == 'NumberOrString') {
+      literalValue = t.numericLiteral(parsers.numberOrStringParser('')(value));
+    }
 
     if (nestedOptionTypes.includes(type)) {
       const object = parsers.objectParser(value);
@@ -254,8 +260,34 @@ function inject(t, list) {
       if (action) {
         props.push(t.objectProperty(t.stringLiteral('action'), action));
       }
+
+      if (t.isGenericTypeAnnotation(elt)) {
+        if (elt.typeAnnotation.id.name in nestedOptionEnvPrefix) {
+          props.push(
+            t.objectProperty(t.stringLiteral('type'), t.stringLiteral(elt.typeAnnotation.id.name))
+          );
+        }
+      } else if (t.isArrayTypeAnnotation(elt)) {
+        const elementType = elt.typeAnnotation.elementType;
+        if (t.isGenericTypeAnnotation(elementType)) {
+          if (elementType.id.name in nestedOptionEnvPrefix) {
+            props.push(
+              t.objectProperty(t.stringLiteral('type'), t.stringLiteral(elementType.id.name + '[]'))
+            );
+          }
+        }
+      }
       if (elt.defaultValue) {
-        const parsedValue = parseDefaultValue(elt, elt.defaultValue, t);
+        let parsedValue = parseDefaultValue(elt, elt.defaultValue, t);
+        if (!parsedValue) {
+          for (const type of elt.typeAnnotation.types) {
+            elt.type = type.type;
+            parsedValue = parseDefaultValue(elt, elt.defaultValue, t);
+            if (parsedValue) {
+              break;
+            }
+          }
+        }
         if (parsedValue) {
           props.push(t.objectProperty(t.stringLiteral('default'), parsedValue));
         } else {

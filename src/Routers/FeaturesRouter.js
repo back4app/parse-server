@@ -47,6 +47,9 @@ export class FeaturesRouter extends PromiseRouter {
           editClassLevelPermissions: true,
           editPointerPermissions: true,
         },
+        settings: {
+          securityCheck: !!config.security?.enableCheck,
+        },
       };
 
       return {

@@ -7,6 +7,7 @@ import net from 'net';
 import AppCache from './cache';
 import DatabaseController from './Controllers/DatabaseController';
 import { logLevels as validLogLevels } from './Controllers/LoggerController';
+import { version } from '../package.json';
 import {
   AccountLockoutOptions,
   DatabaseOptions,
@@ -18,13 +19,14 @@ import {
   SchemaOptions,
   SecurityOptions,
 } from './Options/Definitions';
+import ParseServer from './cloud-code/Parse.Server';
 
 function removeTrailingSlash(str) {
   if (!str) {
     return str;
   }
   if (str.endsWith('/')) {
-    str = str.substr(0, str.length - 1);
+    str = str.substring(0, str.length - 1);
   }
   return str;
 }
@@ -49,6 +51,7 @@ export class Config {
     config.generateEmailVerifyTokenExpiresAt = config.generateEmailVerifyTokenExpiresAt.bind(
       config
     );
+    config.version = version;
     return config;
   }
 
@@ -61,6 +64,7 @@ export class Config {
   }
 
   static validateOptions({
+    customPages,
     publicServerURL,
     revokeSessionOnPasswordReset,
     expireInactiveSessions,
@@ -86,6 +90,8 @@ export class Config {
     logLevels,
     rateLimit,
     databaseOptions,
+    extendSessionOnUse,
+    allowClientClassCreation,
   }) {
     if (masterKey === readOnlyMasterKey) {
       throw new Error('masterKey and readOnlyMasterKey should be different');
@@ -101,6 +107,10 @@ export class Config {
 
     if (typeof revokeSessionOnPasswordReset !== 'boolean') {
       throw 'revokeSessionOnPasswordReset must be a boolean value';
+    }
+
+    if (typeof extendSessionOnUse !== 'boolean') {
+      throw 'extendSessionOnUse must be a boolean value';
     }
 
     if (publicServerURL) {
@@ -124,6 +134,16 @@ export class Config {
     this.validateRateLimit(rateLimit);
     this.validateLogLevels(logLevels);
     this.validateDatabaseOptions(databaseOptions);
+    this.validateCustomPages(customPages);
+    this.validateAllowClientClassCreation(allowClientClassCreation);
+  }
+
+  static validateCustomPages(customPages) {
+    if (!customPages) { return; }
+
+    if (Object.prototype.toString.call(customPages) !== '[object Object]') {
+      throw Error('Parse Server option customPages must be an object.');
+    }
   }
 
   static validateControllers({
@@ -166,6 +186,12 @@ export class Config {
     }
   }
 
+  static validateAllowClientClassCreation(allowClientClassCreation) {
+    if (typeof allowClientClassCreation !== 'boolean') {
+      throw 'Parse Server option allowClientClassCreation must be a boolean.';
+    }
+  }
+
   static validateSecurityOptions(security) {
     if (Object.prototype.toString.call(security) !== '[object Object]') {
       throw 'Parse Server option security must be an object.';
@@ -183,7 +209,7 @@ export class Config {
   }
 
   static validateSchemaOptions(schema: SchemaOptions) {
-    if (!schema) return;
+    if (!schema) { return; }
     if (Object.prototype.toString.call(schema) !== '[object Object]') {
       throw 'Parse Server option schema must be an object.';
     }
@@ -553,6 +579,7 @@ export class Config {
     if (Object.prototype.toString.call(databaseOptions) !== '[object Object]') {
       throw `databaseOptions must be an object`;
     }
+
     if (databaseOptions.enableSchemaHooks === undefined) {
       databaseOptions.enableSchemaHooks = DatabaseOptions.enableSchemaHooks.default;
     } else if (typeof databaseOptions.enableSchemaHooks !== 'boolean') {
@@ -603,6 +630,11 @@ export class Config {
       }
       if (option.errorResponseMessage && typeof option.errorResponseMessage !== 'string') {
         throw `rateLimit.errorResponseMessage must be a string`;
+      }
+      const options = Object.keys(ParseServer.RateLimitZone);
+      if (option.zone && !options.includes(option.zone)) {
+        const formatter = new Intl.ListFormat('en', { style: 'short', type: 'disjunction' });
+        throw `rateLimit.zone must be one of ${formatter.format(options)}`;
       }
     }
   }

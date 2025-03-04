@@ -19,11 +19,10 @@ import {
 } from '../triggers';
 import { getAuthForSessionToken, Auth } from '../Auth';
 import { getCacheController, getDatabaseController } from '../Controllers';
-import LRU from 'lru-cache';
+import { LRUCache as LRU } from 'lru-cache';
 import UserRouter from '../Routers/UsersRouter';
 import DatabaseController from '../Controllers/DatabaseController';
 import { isDeepStrictEqual } from 'util';
-import Deprecator from '../Deprecator/Deprecator';
 import deepcopy from 'deepcopy';
 
 class ParseLiveQueryServer {
@@ -93,6 +92,21 @@ class ParseLiveQueryServer {
     }
     this._createSubscribers();
   }
+
+  async shutdown() {
+    if (this.subscriber.isOpen) {
+      await Promise.all([
+        ...[...this.clients.values()].map(client => client.parseWebSocket.ws.close()),
+        this.parseWebSocketServer.close(),
+        ...Array.from(this.subscriber.subscriptions.keys()).map(key =>
+          this.subscriber.unsubscribe(key)
+        ),
+        this.subscriber.close?.(),
+      ]);
+    }
+    this.subscriber.isOpen = false;
+  }
+
   _createSubscribers() {
     const messageRecieved = (channel, messageStr) => {
       logger.verbose('Subscribe message %j', messageStr);
@@ -518,7 +532,7 @@ class ParseLiveQueryServer {
           ]);
           auth1.auth?.clearRoleCache(sessionToken);
           auth2.auth?.clearRoleCache(sessionToken);
-          this.authCache.del(sessionToken);
+          this.authCache.delete(sessionToken);
         })
       );
     } catch (e) {
@@ -548,7 +562,7 @@ class ParseLiveQueryServer {
           result.error = error;
           this.authCache.set(sessionToken, Promise.resolve(result), this.config.cacheTimeout);
         } else {
-          this.authCache.del(sessionToken);
+          this.authCache.delete(sessionToken);
         }
         return result;
       });
@@ -904,13 +918,6 @@ class ParseLiveQueryServer {
         subscriptionInfo.keys = Array.isArray(request.query.keys)
           ? request.query.keys
           : request.query.keys.split(',');
-      }
-      if (request.query.fields) {
-        subscriptionInfo.keys = request.query.fields;
-        Deprecator.logRuntimeDeprecation({
-          usage: `Subscribing using fields parameter`,
-          solution: `Subscribe using "keys" instead.`,
-        });
       }
       if (request.query.watch) {
         subscriptionInfo.watch = request.query.watch;
