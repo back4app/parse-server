@@ -73,6 +73,11 @@ export class ImportRouter {
     }
 
     if (restObject.objectId) {
+      restObject.id = restObject.objectId;
+      delete restObject.objectId;
+    }
+
+    if (restObject.id) {
       return rest
         .update(
           req.config,
