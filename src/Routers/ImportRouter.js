@@ -73,36 +73,30 @@ export class ImportRouter {
     }
 
     if (restObject.objectId) {
-      restObject.id = restObject.objectId;
-      delete restObject.objectId;
-    }
-
-    if (restObject.id) {
       return rest
-        .update(
+        .create(
           req.config,
           req.auth,
           req.params.className,
-          { objectId: restObject.objectId },
           restObject,
-          req.info.clientSDK
+          req.info.clientSDK,
+          { allowObjectId: true }
         )
         .catch(function(error) {
-          if (error.code === Parse.Error.OBJECT_NOT_FOUND) {
-            return rest.create(
+          if (error.code === Parse.Error.DUPLICATE_VALUE) {
+            return rest.update(
               req.config,
               req.auth,
               req.params.className,
+              { objectId: restObject.objectId },
               restObject,
-              req.info.clientSDK,
-              { allowObjectId: true }
+              req.info.clientSDK
             );
           } else {
             return Promise.reject(error);
           }
         });
     }
-
     return rest.create(req.config, req.auth, req.params.className, restObject);
   }
 
