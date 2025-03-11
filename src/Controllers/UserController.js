@@ -285,6 +285,11 @@ export class UserController extends AdaptableController {
     if (!user || !user._perishable_token) {
       user = await this.setPasswordResetToken(email);
     }
+
+    if (user && user.value) {
+      user = user.value
+    }
+    
     const token = encodeURIComponent(user._perishable_token);
     const username = encodeURIComponent(user.username);
 
