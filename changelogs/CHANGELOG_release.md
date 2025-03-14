@@ -1,3 +1,10 @@
+## [7.5.1](https://github.com/parse-community/parse-server/compare/7.5.0...7.5.1) (2025-03-14)
+
+
+### Bug Fixes
+
+* Security upgrade node from 20.18.2-alpine3.20 to 20.19.0-alpine3.20 ([#9646](https://github.com/parse-community/parse-server/issues/9646)) ([9fc0bfb](https://github.com/parse-community/parse-server/commit/9fc0bfbe3e176bfec521c2bf195dbc185218ad60))
+
 # [7.5.0](https://github.com/parse-community/parse-server/compare/7.4.0...7.5.0) (2025-03-12)
 
 
