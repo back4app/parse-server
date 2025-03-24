@@ -159,6 +159,10 @@ export interface ParseServerOptions {
   /* Configuration for your authentication providers, as stringified JSON. See http://docs.parseplatform.org/parse-server/guide/#oauth-and-3rd-party-authentication
   :ENV: PARSE_SERVER_AUTH_PROVIDERS */
   auth: ?{ [string]: AuthAdapter };
+  /* Enable (or disable) insecure auth adapters, defaults to true. Insecure auth adapters are deprecated and it is recommended to disable them.
+  :ENV: PARSE_SERVER_ENABLE_INSECURE_AUTH_ADAPTERS
+  :DEFAULT: true */
+  enableInsecureAuthAdapters: ?boolean;
   /* Max file size for uploads, defaults to 20mb
   :DEFAULT: 20mb */
   maxUploadSize: ?string;
@@ -602,8 +606,18 @@ export interface DatabaseOptions {
   maxTimeMS: ?number;
   /* The MongoDB driver option to set the maximum replication lag for reads from secondary nodes.*/
   maxStalenessSeconds: ?number;
+  /* The MongoDB driver option to set the minimum number of opened, cached, ready-to-use database connections maintained by the driver. */
+  minPoolSize: ?number;
   /* The MongoDB driver option to set the maximum number of opened, cached, ready-to-use database connections maintained by the driver. */
   maxPoolSize: ?number;
+  /* The MongoDB driver option to specify the amount of time, in milliseconds, to wait to establish a single TCP socket connection to the server before raising an error. Specifying 0 disables the connection timeout. */
+  connectTimeoutMS: ?number;
+  /* The MongoDB driver option to specify the amount of time, in milliseconds, spent attempting to send or receive on a socket before timing out. Specifying 0 means no timeout. */
+  socketTimeoutMS: ?number;
+  /* The MongoDB driver option to set whether the socket attempts to connect to IPv6 and IPv4 addresses until a connection is established. If available, the driver will select the first IPv6 address. */
+  autoSelectFamily: ?boolean;
+  /* The MongoDB driver option to specify the amount of time in milliseconds to wait for a connection attempt to finish before trying the next address when using the autoSelectFamily option. If set to a positive integer less than 10, the value 10 is used instead. */
+  autoSelectFamilyAttemptTimeout: ?number;
 }
 
 export interface AuthAdapter {
