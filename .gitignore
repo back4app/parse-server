@@ -59,3 +59,5 @@ node_modules
 
 # Merge files
 *.orig
+
+package-lock.json
