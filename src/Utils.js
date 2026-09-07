@@ -82,7 +82,7 @@ class Utils {
     try {
       await fs.access(path);
       return true;
-    } catch (e) {
+    } catch {
       return false;
     }
   }
@@ -344,16 +344,25 @@ class Utils {
     const isMatch = (a, b) => (typeof a === 'string' && new RegExp(b).test(a)) || a === b;
     const isKeyMatch = k => isMatch(k, key);
     const isValueMatch = v => isMatch(v, value);
-    for (const [k, v] of Object.entries(obj)) {
-      if (key !== undefined && value === undefined && isKeyMatch(k)) {
-        return true;
-      } else if (key === undefined && value !== undefined && isValueMatch(v)) {
-        return true;
-      } else if (key !== undefined && value !== undefined && isKeyMatch(k) && isValueMatch(v)) {
-        return true;
+    const stack = [obj];
+    const seen = new WeakSet();
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (seen.has(current)) {
+        continue;
       }
-      if (['[object Object]', '[object Array]'].includes(Object.prototype.toString.call(v))) {
-        return Utils.objectContainsKeyValue(v, key, value);
+      seen.add(current);
+      for (const [k, v] of Object.entries(current)) {
+        if (key !== undefined && value === undefined && isKeyMatch(k)) {
+          return true;
+        } else if (key === undefined && value !== undefined && isValueMatch(v)) {
+          return true;
+        } else if (key !== undefined && value !== undefined && isKeyMatch(k) && isValueMatch(v)) {
+          return true;
+        }
+        if (['[object Object]', '[object Array]'].includes(Object.prototype.toString.call(v))) {
+          stack.push(v);
+        }
       }
     }
     return false;
@@ -398,6 +407,93 @@ class Utils {
       delete obj[key];
     }
     return obj;
+  }
+
+  /**
+   * Encodes a string to be used in a URL.
+   * @param {String} input The string to encode.
+   * @returns {String} The encoded string.
+   */
+  static encodeForUrl(input) {
+    return encodeURIComponent(input).replace(/[!'.()*]/g, char =>
+      '%' + char.charCodeAt(0).toString(16).toUpperCase()
+    );
+  }
+
+  /**
+   * Creates a JSON replacer function that handles Map, Set, and circular references.
+   * This replacer can be used with JSON.stringify to safely serialize complex objects.
+   *
+   * @returns {Function} A replacer function for JSON.stringify that:
+   * - Converts Map instances to plain objects
+   * - Converts Set instances to arrays
+   * - Replaces circular references with '[Circular]' marker
+   *
+   * @example
+   * const obj = { name: 'test', map: new Map([['key', 'value']]) };
+   * obj.self = obj; // circular reference
+   * JSON.stringify(obj, Utils.getCircularReplacer());
+   * // Output: {"name":"test","map":{"key":"value"},"self":"[Circular]"}
+   */
+  static getCircularReplacer() {
+    const seen = new WeakSet();
+    return (key, value) => {
+      if (value instanceof Map) {
+        return Object.fromEntries(value);
+      }
+      if (value instanceof Set) {
+        return Array.from(value);
+      }
+      if (typeof value === 'object' && value !== null) {
+        if (seen.has(value)) {
+          return '[Circular]';
+        }
+        seen.add(value);
+      }
+      return value;
+    };
+  }
+
+  /**
+   * Gets a nested property value from an object using dot notation.
+   * @param {Object} obj The object to get the property from.
+   * @param {String} path The property path in dot notation, e.g. 'databaseOptions.allowPublicExplain'.
+   * @returns {any} The property value or undefined if not found.
+   * @example
+   * const obj = { database: { options: { enabled: true } } };
+   * Utils.getNestedProperty(obj, 'database.options.enabled');
+   * // Output: true
+   */
+  static getNestedProperty(obj, path) {
+    if (!obj || !path) {
+      return undefined;
+    }
+    const keys = path.split('.');
+    let current = obj;
+    for (const key of keys) {
+      if (current == null || typeof current !== 'object') {
+        return undefined;
+      }
+      current = current[key];
+    }
+    return current;
+  }
+
+  /**
+   * Returns the file extension as the substring after the last dot in the
+   * filename. A trailing dot or a filename without a dot yields an empty
+   * string. Callers apply any further normalization (whitespace, MIME
+   * parameters, etc.) for their use case — this is a pure parser, not a
+   * policy.
+   *
+   * @param {string} filename
+   * @returns {string} the extension, or `''` if none
+   */
+  static getFileExtension(filename) {
+    if (!filename || !filename.includes('.')) {
+      return '';
+    }
+    return filename.substring(filename.lastIndexOf('.') + 1);
   }
 }
 

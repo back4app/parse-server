@@ -10,7 +10,7 @@ export class InstallationsRouter extends ClassesRouter {
   }
 
   handleFind(req) {
-    const body = Object.assign(req.body, ClassesRouter.JSONFromQuery(req.query));
+    const body = Object.assign(req.body || {}, ClassesRouter.JSONFromQuery(req.query));
     const options = ClassesRouter.optionsFromBody(body, req.config.defaultLimit);
     return rest
       .find(
@@ -19,7 +19,6 @@ export class InstallationsRouter extends ClassesRouter {
         '_Installation',
         body.where,
         options,
-        req.info.clientSDK,
         req.info.context
       )
       .then(response => {

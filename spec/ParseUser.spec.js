@@ -13,6 +13,7 @@ const passwordCrypto = require('../lib/password');
 const Config = require('../lib/Config');
 const cryptoUtils = require('../lib/cryptoUtils');
 
+
 describe('allowExpiredAuthDataToken option', () => {
   it('should accept true value', async () => {
     await reconfigureServer({ allowExpiredAuthDataToken: true });
@@ -38,6 +39,12 @@ describe('allowExpiredAuthDataToken option', () => {
 });
 
 describe('Parse.User testing', () => {
+  let loggerErrorSpy;
+  beforeEach(() => {
+    const logger = require('../lib/logger').default;
+    loggerErrorSpy = spyOn(logger, 'error').and.callThrough();
+  });
+
   it('user sign up class method', async done => {
     const user = await Parse.User.signUp('asdf', 'zxcv');
     ok(user.getSessionToken());
@@ -72,6 +79,29 @@ describe('Parse.User testing', () => {
       expect(e.code).toBe(Parse.Error.OBJECT_NOT_FOUND);
       done();
     }
+  });
+
+  it('normalizes login response time for non-existent and existing users', async () => {
+    const passwordCrypto = require('../lib/password');
+    const compareSpy = spyOn(passwordCrypto, 'compare').and.callThrough();
+    await Parse.User.signUp('existinguser', 'password123');
+    compareSpy.calls.reset();
+
+    // Login with non-existent user — should use dummy hash
+    await expectAsync(
+      Parse.User.logIn('nonexistentuser', 'wrongpassword')
+    ).toBeRejected();
+    expect(compareSpy).toHaveBeenCalledTimes(1);
+    expect(compareSpy).toHaveBeenCalledWith('wrongpassword', passwordCrypto.dummyHash);
+    compareSpy.calls.reset();
+
+    // Login with existing user but wrong password — should use real hash
+    await expectAsync(
+      Parse.User.logIn('existinguser', 'wrongpassword')
+    ).toBeRejected();
+    expect(compareSpy).toHaveBeenCalledTimes(1);
+    expect(compareSpy.calls.mostRecent().args[0]).toBe('wrongpassword');
+    expect(compareSpy.calls.mostRecent().args[1]).not.toBe(passwordCrypto.dummyHash);
   });
 
   it('user login with context', async () => {
@@ -330,7 +360,7 @@ describe('Parse.User testing', () => {
     expect(newUser).not.toBeUndefined();
   });
 
-  it('should be let masterKey lock user out with authData', async () => {
+  it_only_db('mongo')('should reject duplicate authData when masterKey locks user out (mongo)', async () => {
     const response = await request({
       method: 'POST',
       url: 'http://localhost:8378/1/classes/_User',
@@ -346,15 +376,13 @@ describe('Parse.User testing', () => {
     });
     const body = response.data;
     const objectId = body.objectId;
-    const sessionToken = body.sessionToken;
-    expect(sessionToken).toBeDefined();
+    expect(body.sessionToken).toBeDefined();
     expect(objectId).toBeDefined();
     const user = new Parse.User();
     user.id = objectId;
     const ACL = new Parse.ACL();
     user.setACL(ACL);
     await user.save(null, { useMasterKey: true });
-    // update the user
     const options = {
       method: 'POST',
       url: `http://localhost:8378/1/classes/_User/`,
@@ -370,8 +398,61 @@ describe('Parse.User testing', () => {
         },
       },
     };
-    const res = await request(options);
-    expect(res.data.objectId).not.toEqual(objectId);
+    try {
+      await request(options);
+      fail('should have thrown');
+    } catch (err) {
+      expect(err.data.code).toBe(208);
+      expect(err.data.error).toBe('this auth is already used');
+    }
+  });
+
+  it_only_db('postgres')('should reject duplicate authData when masterKey locks user out (postgres)', async () => {
+    await reconfigureServer();
+    const response = await request({
+      method: 'POST',
+      url: 'http://localhost:8378/1/classes/_User',
+      headers: {
+        'X-Parse-Application-Id': Parse.applicationId,
+        'X-Parse-REST-API-Key': 'rest',
+        'Content-Type': 'application/json',
+      },
+      body: {
+        key: 'value',
+        authData: { anonymous: { id: '00000000-0000-0000-0000-000000000001' } },
+      },
+    });
+    const body = response.data;
+    const objectId = body.objectId;
+    expect(body.sessionToken).toBeDefined();
+    expect(objectId).toBeDefined();
+    const user = new Parse.User();
+    user.id = objectId;
+    const ACL = new Parse.ACL();
+    user.setACL(ACL);
+    await user.save(null, { useMasterKey: true });
+    const options = {
+      method: 'POST',
+      url: `http://localhost:8378/1/classes/_User/`,
+      headers: {
+        'X-Parse-Application-Id': Parse.applicationId,
+        'X-Parse-REST-API-Key': 'rest',
+        'Content-Type': 'application/json',
+      },
+      body: {
+        key: 'otherValue',
+        authData: {
+          anonymous: { id: '00000000-0000-0000-0000-000000000001' },
+        },
+      },
+    };
+    try {
+      await request(options);
+      fail('should have thrown');
+    } catch (err) {
+      expect(err.data.code).toBe(208);
+      expect(err.data.error).toBe('this auth is already used');
+    }
   });
 
   it('user login with files', done => {
@@ -2651,6 +2732,7 @@ describe('Parse.User testing', () => {
           const b = response.data;
           expect(b.results.length).toEqual(1);
           const objId = b.results[0].objectId;
+          loggerErrorSpy.calls.reset();
           request({
             method: 'DELETE',
             headers: {
@@ -2661,7 +2743,9 @@ describe('Parse.User testing', () => {
           }).then(fail, response => {
             const b = response.data;
             expect(b.code).toEqual(209);
-            expect(b.error).toBe('Invalid session token');
+            expect(b.error).toBe('Permission denied');
+
+            expect(loggerErrorSpy).toHaveBeenCalledWith('Sanitized error:', jasmine.stringContaining('Invalid session token'));
             done();
           });
         });
@@ -3355,6 +3439,9 @@ describe('Parse.User testing', () => {
       sendMail: () => Promise.resolve(),
     };
 
+    let logger;
+    let loggerErrorSpy;
+
     const user = new Parse.User();
     user.set({
       username: 'hello',
@@ -3369,9 +3456,12 @@ describe('Parse.User testing', () => {
       publicServerURL: 'http://localhost:8378/1',
     })
       .then(() => {
+        logger = require('../lib/logger').default;
+        loggerErrorSpy = spyOn(logger, 'error').and.callThrough();
         return user.signUp();
       })
       .then(() => {
+        loggerErrorSpy.calls.reset();
         return Parse.User.current().set('emailVerified', true).save();
       })
       .then(() => {
@@ -3379,7 +3469,9 @@ describe('Parse.User testing', () => {
         done();
       })
       .catch(err => {
-        expect(err.message).toBe("Clients aren't allowed to manually update email verification.");
+        expect(err.message).toBe('Permission denied');
+        expect(loggerErrorSpy).toHaveBeenCalledWith('Sanitized error:', jasmine.stringContaining("Clients aren't allowed to manually update email verification."));
+
         done();
       });
   });
@@ -3663,6 +3755,7 @@ describe('Parse.User testing', () => {
   });
 
   xit('should not send a verification email if the user signed up using oauth', done => {
+    pending('this test fails.  See: https://github.com/parse-community/parse-server/issues/5097');
     let emailCalledCount = 0;
     const emailAdapter = {
       sendVerificationEmail: () => {
@@ -3691,7 +3784,7 @@ describe('Parse.User testing', () => {
         done();
       });
     });
-  }).pend('this test fails.  See: https://github.com/parse-community/parse-server/issues/5097');
+  });
 
   it('should be able to update user with authData passed', done => {
     let objectId;
@@ -4276,6 +4369,12 @@ describe('Security Advisory GHSA-8w3j-g983-8jh5', function () {
 });
 
 describe('login as other user', () => {
+  let loggerErrorSpy;
+  beforeEach(() => {
+    const logger = require('../lib/logger').default;
+    loggerErrorSpy = spyOn(logger, 'error').and.callThrough();
+  });
+
   it('allows creating a session for another user with the master key', async done => {
     await Parse.User.signUp('some_user', 'some_password');
     const userId = Parse.User.current().id;
@@ -4375,6 +4474,7 @@ describe('login as other user', () => {
     const userId = Parse.User.current().id;
     await Parse.User.logOut();
 
+    loggerErrorSpy.calls.reset();
     try {
       await request({
         method: 'POST',
@@ -4392,7 +4492,8 @@ describe('login as other user', () => {
       done();
     } catch (err) {
       expect(err.data.code).toBe(Parse.Error.OPERATION_FORBIDDEN);
-      expect(err.data.error).toBe('master key is required');
+      expect(err.data.error).toBe('Permission denied');
+      expect(loggerErrorSpy).toHaveBeenCalledWith('Sanitized error:', jasmine.stringContaining('master key is required'));
     }
 
     const sessionsQuery = new Parse.Query(Parse.Session);

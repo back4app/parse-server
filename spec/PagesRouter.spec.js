@@ -1,6 +1,7 @@
 'use strict';
 
 const request = require('../lib/request');
+const path = require('path');
 const fs = require('fs').promises;
 const mustache = require('mustache');
 const Utils = require('../lib/Utils');
@@ -108,7 +109,7 @@ describe('Pages Router', () => {
       const res = await request({
         method: 'POST',
         url: 'http://localhost:8378/1/apps/test/request_password_reset',
-        body: `new_password=user1&token=43634643&username=username`,
+        body: `new_password=user1&token=43634643`,
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'X-Requested-With': 'XMLHttpRequest',
@@ -124,7 +125,7 @@ describe('Pages Router', () => {
         await request({
           method: 'POST',
           url: 'http://localhost:8378/1/apps/test/request_password_reset',
-          body: `new_password=&token=132414&username=Johnny`,
+          body: `new_password=&token=132414`,
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
             'X-Requested-With': 'XMLHttpRequest',
@@ -137,30 +138,12 @@ describe('Pages Router', () => {
       }
     });
 
-    it('request_password_reset: responds with AJAX error on missing username', async () => {
-      try {
-        await request({
-          method: 'POST',
-          url: 'http://localhost:8378/1/apps/test/request_password_reset',
-          body: `new_password=user1&token=43634643&username=`,
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'X-Requested-With': 'XMLHttpRequest',
-          },
-          followRedirects: false,
-        });
-      } catch (error) {
-        expect(error.status).not.toBe(302);
-        expect(error.text).toEqual('{"code":200,"error":"Missing username"}');
-      }
-    });
-
     it('request_password_reset: responds with AJAX error on missing token', async () => {
       try {
         await request({
           method: 'POST',
           url: 'http://localhost:8378/1/apps/test/request_password_reset',
-          body: `new_password=user1&token=&username=Johnny`,
+          body: `new_password=user1&token=`,
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
             'X-Requested-With': 'XMLHttpRequest',
@@ -577,7 +560,7 @@ describe('Pages Router', () => {
         spyOnProperty(Page.prototype, 'defaultFile').and.returnValue(jsonPageFile);
 
         const response = await request({
-          url: `http://localhost:8378/1/apps/test/request_password_reset?token=exampleToken&username=exampleUsername&locale=${exampleLocale}`,
+          url: `http://localhost:8378/1/apps/test/request_password_reset?token=exampleToken&locale=${exampleLocale}`,
           followRedirects: false,
         }).catch(e => e);
         expect(response.status).toEqual(200);
@@ -626,7 +609,7 @@ describe('Pages Router', () => {
         await reconfigureServer(config);
         const response = await request({
           url:
-            'http://localhost:8378/1/apps/test/request_password_reset?token=exampleToken&username=exampleUsername&locale=de-AT',
+            'http://localhost:8378/1/apps/test/request_password_reset?token=exampleToken&locale=de-AT',
           followRedirects: false,
           method: 'POST',
         });
@@ -640,7 +623,7 @@ describe('Pages Router', () => {
         await reconfigureServer(config);
         const response = await request({
           url:
-            'http://localhost:8378/1/apps/test/request_password_reset?token=exampleToken&username=exampleUsername&locale=de-AT',
+            'http://localhost:8378/1/apps/test/request_password_reset?token=exampleToken&locale=de-AT',
           followRedirects: false,
           method: 'GET',
         });
@@ -676,13 +659,11 @@ describe('Pages Router', () => {
         const appId = linkResponse.headers['x-parse-page-param-appid'];
         const token = linkResponse.headers['x-parse-page-param-token'];
         const locale = linkResponse.headers['x-parse-page-param-locale'];
-        const username = linkResponse.headers['x-parse-page-param-username'];
         const publicServerUrl = linkResponse.headers['x-parse-page-param-publicserverurl'];
         const passwordResetPagePath = pageResponse.calls.all()[0].args[0];
         expect(appId).toBeDefined();
         expect(token).toBeDefined();
         expect(locale).toBeDefined();
-        expect(username).toBeDefined();
         expect(publicServerUrl).toBeDefined();
         expect(passwordResetPagePath).toMatch(
           new RegExp(`\/${exampleLocale}\/${pages.passwordReset.defaultFile}`)
@@ -696,7 +677,6 @@ describe('Pages Router', () => {
           body: {
             token,
             locale,
-            username,
             new_password: 'newPassword',
           },
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -793,15 +773,13 @@ describe('Pages Router', () => {
 
         const appId = linkResponse.headers['x-parse-page-param-appid'];
         const locale = linkResponse.headers['x-parse-page-param-locale'];
-        const username = linkResponse.headers['x-parse-page-param-username'];
         const publicServerUrl = linkResponse.headers['x-parse-page-param-publicserverurl'];
         const invalidVerificationPagePath = pageResponse.calls.all()[0].args[0];
         expect(appId).toBeDefined();
         expect(locale).toBe(exampleLocale);
-        expect(username).toBeDefined();
         expect(publicServerUrl).toBeDefined();
         expect(invalidVerificationPagePath).toMatch(
-          new RegExp(`\/${exampleLocale}\/${pages.emailVerificationLinkExpired.defaultFile}`)
+          new RegExp(`\/${exampleLocale}\/${pages.emailVerificationLinkInvalid.defaultFile}`)
         );
 
         const formUrl = `${publicServerUrl}/apps/${appId}/resend_verification_email`;
@@ -810,7 +788,7 @@ describe('Pages Router', () => {
           method: 'POST',
           body: {
             locale,
-            username,
+            username: 'exampleUsername',
           },
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           followRedirects: false,
@@ -847,17 +825,15 @@ describe('Pages Router', () => {
 
         const appId = linkResponse.headers['x-parse-page-param-appid'];
         const locale = linkResponse.headers['x-parse-page-param-locale'];
-        const username = linkResponse.headers['x-parse-page-param-username'];
         const publicServerUrl = linkResponse.headers['x-parse-page-param-publicserverurl'];
         await jasmine.timeout();
 
         const invalidVerificationPagePath = pageResponse.calls.all()[0].args[0];
         expect(appId).toBeDefined();
         expect(locale).toBe(exampleLocale);
-        expect(username).toBeDefined();
         expect(publicServerUrl).toBeDefined();
         expect(invalidVerificationPagePath).toMatch(
-          new RegExp(`\/${exampleLocale}\/${pages.emailVerificationLinkExpired.defaultFile}`)
+          new RegExp(`\/${exampleLocale}\/${pages.emailVerificationLinkInvalid.defaultFile}`)
         );
 
         spyOn(UserController.prototype, 'resendVerificationEmail').and.callFake(() =>
@@ -870,12 +846,75 @@ describe('Pages Router', () => {
           method: 'POST',
           body: {
             locale,
-            username,
+            username: 'exampleUsername',
           },
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           followRedirects: false,
         });
         expect(formResponse.status).toEqual(303);
+        // With emailVerifySuccessOnInvalidEmail: true (default), the resend
+        // page always redirects to the success page to prevent user enumeration
+        expect(formResponse.text).toContain(
+          `/${locale}/${pages.emailVerificationSendSuccess.defaultFile}`
+        );
+      });
+
+      it('localizes end-to-end for verify email: invalid verification link - link send fail with emailVerifySuccessOnInvalidEmail disabled', async () => {
+        config.emailVerifySuccessOnInvalidEmail = false;
+        await reconfigureServer(config);
+        const sendVerificationEmail = spyOn(
+          config.emailAdapter,
+          'sendVerificationEmail'
+        ).and.callThrough();
+        const user = new Parse.User();
+        user.setUsername('exampleUsername');
+        user.setPassword('examplePassword');
+        user.set('email', 'mail@example.com');
+        await user.signUp();
+        await jasmine.timeout();
+
+        const link = sendVerificationEmail.calls.all()[0].args[0].link;
+        const linkWithLocale = new URL(link);
+        linkWithLocale.searchParams.append(pageParams.locale, exampleLocale);
+        linkWithLocale.searchParams.set(pageParams.token, 'invalidToken');
+
+        const linkResponse = await request({
+          url: linkWithLocale.toString(),
+          followRedirects: false,
+        });
+        expect(linkResponse.status).toBe(200);
+
+        const appId = linkResponse.headers['x-parse-page-param-appid'];
+        const locale = linkResponse.headers['x-parse-page-param-locale'];
+        const publicServerUrl = linkResponse.headers['x-parse-page-param-publicserverurl'];
+        await jasmine.timeout();
+
+        const invalidVerificationPagePath = pageResponse.calls.all()[0].args[0];
+        expect(appId).toBeDefined();
+        expect(locale).toBe(exampleLocale);
+        expect(publicServerUrl).toBeDefined();
+        expect(invalidVerificationPagePath).toMatch(
+          new RegExp(`\/${exampleLocale}\/${pages.emailVerificationLinkInvalid.defaultFile}`)
+        );
+
+        spyOn(UserController.prototype, 'resendVerificationEmail').and.callFake(() =>
+          Promise.reject('failed to resend verification email')
+        );
+
+        const formUrl = `${publicServerUrl}/apps/${appId}/resend_verification_email`;
+        const formResponse = await request({
+          url: formUrl,
+          method: 'POST',
+          body: {
+            locale,
+            username: 'exampleUsername',
+          },
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          followRedirects: false,
+        });
+        expect(formResponse.status).toEqual(303);
+        // With emailVerifySuccessOnInvalidEmail: false, the resend page
+        // redirects to the fail page
         expect(formResponse.text).toContain(
           `/${locale}/${pages.emailVerificationSendFail.defaultFile}`
         );
@@ -981,6 +1020,125 @@ describe('Pages Router', () => {
         }).catch(e => e);
         expect(response.status).toBe(404);
         expect(response.text).toBe('Not found.');
+      });
+
+      it('rejects requesting file from sibling directory with prefix-colliding name via encoded path traversal', async () => {
+        // Create a temporary pages directory and a sibling directory whose name
+        // starts with the same prefix (e.g. "pages" vs "pages-secret"), which
+        // would bypass a naive `startsWith` check without a path separator.
+        const baseDir = path.join(__dirname, 'tmp-pages-exploit-test');
+        const pagesDir = path.join(baseDir, 'pages');
+        const siblingDir = path.join(baseDir, 'pages-secret');
+        const marker = `SECRET_CONTENT_${Date.now()}`;
+
+        try {
+          await fs.mkdir(pagesDir, { recursive: true });
+          await fs.mkdir(siblingDir, { recursive: true });
+          // Copy a required HTML file so the pages router initializes correctly
+          const publicDir = path.resolve(__dirname, '../public');
+          const htmlFile = await fs.readFile(
+            path.join(publicDir, 'email_verification_link_invalid.html'),
+            'utf-8'
+          );
+          await fs.writeFile(
+            path.join(pagesDir, 'email_verification_link_invalid.html'),
+            htmlFile
+          );
+          // Write a secret file in the sibling directory
+          await fs.writeFile(path.join(siblingDir, 'secret.txt'), marker);
+
+          config.pages.pagesPath = pagesDir;
+          await reconfigureServer(config);
+
+          // Use URL-encoded path traversal: %2e%2e%2f = ../
+          // This reaches the sibling "pages-secret" directory which shares
+          // the "pages" prefix with the configured pagesPath directory name.
+          const url = `${config.publicServerURL}/apps/%2e%2e%2fpages-secret%2fsecret.txt`;
+          const response = await request({
+            url: url,
+            followRedirects: false,
+          }).catch(e => e);
+
+          expect(response.status).toBe(404);
+          expect(response.text).not.toContain(marker);
+        } finally {
+          await fs.rm(baseDir, { recursive: true, force: true });
+        }
+      });
+
+      it('does not leak email verification status via resend page when emailVerifySuccessOnInvalidEmail is true', async () => {
+        const emailAdapter = {
+          sendVerificationEmail: () => {},
+          sendPasswordResetEmail: () => {},
+          sendMail: () => {},
+        };
+        await reconfigureServer({
+          ...config,
+          verifyUserEmails: true,
+          emailVerifySuccessOnInvalidEmail: true,
+          emailAdapter,
+        });
+
+        // Create a user with unverified email
+        const user = new Parse.User();
+        user.setUsername('realuser');
+        user.setPassword('password123');
+        user.setEmail('real@example.com');
+        await user.signUp();
+
+        const formUrl = `${config.publicServerURL}/apps/${config.appId}/resend_verification_email`;
+
+        // Resend for existing unverified user
+        const existingResponse = await request({
+          method: 'POST',
+          url: formUrl,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'username=realuser',
+          followRedirects: false,
+        }).catch(e => e);
+
+        // Resend for non-existing user
+        const nonExistingResponse = await request({
+          method: 'POST',
+          url: formUrl,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'username=fakeuser',
+          followRedirects: false,
+        }).catch(e => e);
+
+        // Both should redirect to the same page (success) to prevent enumeration
+        expect(existingResponse.status).toBe(303);
+        expect(nonExistingResponse.status).toBe(303);
+        expect(existingResponse.headers.location).toContain('email_verification_send_success');
+        expect(nonExistingResponse.headers.location).toContain('email_verification_send_success');
+      });
+
+      it('does leak email verification status via resend page when emailVerifySuccessOnInvalidEmail is false', async () => {
+        const emailAdapter = {
+          sendVerificationEmail: () => {},
+          sendPasswordResetEmail: () => {},
+          sendMail: () => {},
+        };
+        await reconfigureServer({
+          ...config,
+          verifyUserEmails: true,
+          emailVerifySuccessOnInvalidEmail: false,
+          emailAdapter,
+        });
+
+        const formUrl = `${config.publicServerURL}/apps/${config.appId}/resend_verification_email`;
+
+        // Resend for non-existing user should redirect to fail page
+        const nonExistingResponse = await request({
+          method: 'POST',
+          url: formUrl,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'username=fakeuser',
+          followRedirects: false,
+        }).catch(e => e);
+
+        expect(nonExistingResponse.status).toBe(303);
+        expect(nonExistingResponse.headers.location).toContain('email_verification_send_fail');
       });
     });
 
@@ -1155,12 +1313,10 @@ describe('Pages Router', () => {
 
         const appId = linkResponse.headers['x-parse-page-param-appid'];
         const token = linkResponse.headers['x-parse-page-param-token'];
-        const username = linkResponse.headers['x-parse-page-param-username'];
         const publicServerUrl = linkResponse.headers['x-parse-page-param-publicserverurl'];
         const passwordResetPagePath = pageResponse.calls.all()[0].args[0];
         expect(appId).toBeDefined();
         expect(token).toBeDefined();
-        expect(username).toBeDefined();
         expect(publicServerUrl).toBeDefined();
         expect(passwordResetPagePath).toMatch(new RegExp(`\/${pages.passwordReset.defaultFile}`));
         pageResponse.calls.reset();
@@ -1171,7 +1327,6 @@ describe('Pages Router', () => {
           method: 'POST',
           body: {
             token,
-            username,
             new_password: 'newPassword',
           },
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -1206,6 +1361,90 @@ describe('Pages Router', () => {
         const pagePath = pageResponse.calls.all()[0].args[0];
         expect(pagePath).toMatch(new RegExp(`\/${pages.emailVerificationSuccess.defaultFile}`));
       });
+    });
+  });
+
+  describe('XSS Protection', () => {
+    beforeEach(async () => {
+      await reconfigureServer({
+        appId: 'test',
+        appName: 'exampleAppname',
+        publicServerURL: 'http://localhost:8378/1',
+        pages: { enableRouter: true },
+      });
+    });
+
+    it('should escape XSS payloads in token parameter', async () => {
+      const xssPayload = '"><script>alert("XSS")</script>';
+      const response = await request({
+        url: `http://localhost:8378/1/apps/choose_password?token=${encodeURIComponent(xssPayload)}&username=test&appId=test`,
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.text).not.toContain('<script>alert("XSS")</script>');
+      expect(response.text).toContain('&quot;&gt;&lt;script&gt;');
+    });
+
+    it('should escape XSS in username parameter', async () => {
+      const xssUsername = '<img src=x onerror=alert(1)>';
+      const response = await request({
+        url: `http://localhost:8378/1/apps/choose_password?username=${encodeURIComponent(xssUsername)}&appId=test`,
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.text).not.toContain('<img src=x onerror=alert(1)>');
+      expect(response.text).toContain('&lt;img');
+    });
+
+    it('should reject XSS payload in locale parameter', async () => {
+      const xssLocale = '"><svg/onload=alert(1)>';
+      const response = await request({
+        url: `http://localhost:8378/1/apps/choose_password?locale=${encodeURIComponent(xssLocale)}&appId=test`,
+      });
+
+      expect(response.status).toBe(200);
+      // Invalid locale is rejected by format validation, so the XSS
+      // payload never reaches the page content
+      expect(response.text).not.toContain('<svg/onload=alert(1)>');
+      expect(response.text).not.toContain('&quot;&gt;&lt;svg');
+    });
+
+    it('should reject non-ASCII characters in locale parameter', async () => {
+      // Non-ASCII characters like ğ (U+011F) would cause ERR_INVALID_CHAR
+      // when set as HTTP header value if not rejected by locale validation
+      const nonAsciiLocale = 'ğ';
+      const response = await request({
+        url: `http://localhost:8378/1/apps/choose_password?locale=${encodeURIComponent(nonAsciiLocale)}&appId=test`,
+      });
+
+      expect(response.status).toBe(200);
+      // Non-ASCII locale is rejected by format validation;
+      // no ERR_INVALID_CHAR error occurs
+      expect(response.headers['x-parse-page-param-locale']).toBeUndefined();
+    });
+
+    it('should handle legitimate usernames with quotes correctly', async () => {
+      const username = "O'Brien";
+      const response = await request({
+        url: `http://localhost:8378/1/apps/choose_password?username=${encodeURIComponent(username)}&appId=test`,
+      });
+
+      expect(response.status).toBe(200);
+      // Should be properly escaped as HTML entity
+      expect(response.text).toContain('O&#39;Brien');
+      // Should NOT contain unescaped quote that breaks HTML
+      expect(response.text).not.toContain('value="O\'Brien"');
+    });
+
+    it('should handle legitimate usernames with ampersands correctly', async () => {
+      const username = 'Smith & Co';
+      const response = await request({
+        url: `http://localhost:8378/1/apps/choose_password?username=${encodeURIComponent(username)}&appId=test`,
+      });
+
+      expect(response.status).toBe(200);
+      // Should be properly escaped
+      expect(response.text).toContain('Smith &amp; Co');
     });
   });
 });

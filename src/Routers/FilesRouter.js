@@ -1,37 +1,12 @@
 import express from 'express';
-import BodyParser from 'body-parser';
 import * as Middlewares from '../middlewares';
 import Parse from 'parse/node';
 import Config from '../Config';
 import logger from '../logger';
 const triggers = require('../triggers');
-const http = require('http');
 const Utils = require('../Utils');
-
-const downloadFileFromURI = uri => {
-  return new Promise((res, rej) => {
-    http
-      .get(uri, response => {
-        response.setDefaultEncoding('base64');
-        let body = `data:${response.headers['content-type']};base64,`;
-        response.on('data', data => (body += data));
-        response.on('end', () => res(body));
-      })
-      .on('error', e => {
-        rej(`Error downloading file from ${uri}: ${e.message}`);
-      });
-  });
-};
-
-const addFileDataIfNeeded = async file => {
-  if (file._source.format === 'uri') {
-    const base64 = await downloadFileFromURI(file._source.uri);
-    file._previousSave = file;
-    file._data = base64;
-    file._requestTask = null;
-  }
-  return file;
-};
+const auth = require('../Auth');
+import { createSanitizedHttpError } from '../Error';
 
 export class FilesRouter {
   expressRouter({ maxUploadSize = '20Mb' } = {}) {
@@ -45,7 +20,7 @@ export class FilesRouter {
 
     router.post(
       '/files/:filename',
-      BodyParser.raw({
+      express.raw({
         type: () => {
           return true;
         },
@@ -66,42 +41,111 @@ export class FilesRouter {
     return router;
   }
 
+  static async _resolveAuth(req, config) {
+    const sessionToken = req.get('X-Parse-Session-Token');
+    if (!sessionToken) {
+      return null;
+    }
+    try {
+      return await auth.getAuthForSessionToken({
+        config,
+        sessionToken,
+        installationId: req.get('X-Parse-Installation-Id'),
+      });
+    } catch {
+      return null;
+    }
+  }
+
   async getHandler(req, res) {
     const config = Config.get(req.params.appId);
     if (!config) {
       res.status(403);
-      const err = new Parse.Error(Parse.Error.OPERATION_FORBIDDEN, 'Invalid application ID.');
-      res.json({ code: err.code, error: err.message });
+      res.json({ code: Parse.Error.OPERATION_FORBIDDEN, error: 'Invalid application ID.' });
       return;
     }
-    const filesController = config.filesController;
-    const filename = req.params.filename;
-    const mime = (await import('mime')).default;
-    const contentType = mime.getType(filename);
-    if (isFileStreamable(req, filesController)) {
-      filesController.handleFileStream(config, filename, req, res, contentType).catch(() => {
-        res.status(404);
-        res.set('Content-Type', 'text/plain');
-        res.end('File not found.');
-      });
-    } else {
-      filesController
-        .getFileData(config, filename)
-        .then(data => {
-          res.status(200);
-          res.set('Content-Type', contentType);
-          res.set('Content-Length', data.length);
-          res.end(data);
-        })
-        .catch(() => {
+
+    let filename = req.params.filename;
+    try {
+      const filesController = config.filesController;
+      const mime = (await import('mime')).default;
+      let contentType = mime.getType(filename);
+      let file = new Parse.File(filename, { base64: '' }, contentType);
+      const fileAuth = await FilesRouter._resolveAuth(req, config);
+      const triggerResult = await triggers.maybeRunFileTrigger(
+        triggers.Types.beforeFind,
+        { file },
+        config,
+        fileAuth
+      );
+      if (triggerResult?.file?._name) {
+        filename = triggerResult?.file?._name;
+        contentType = mime.getType(filename);
+      }
+
+      if (isFileStreamable(req, filesController)) {
+        const afterFind = await triggers.maybeRunFileTrigger(
+          triggers.Types.afterFind,
+          { file, forceDownload: false },
+          config,
+          fileAuth
+        );
+        if (afterFind?.forceDownload) {
+          res.set('Content-Disposition', `attachment;filename=${afterFind.file?._name || filename}`);
+        }
+        filesController.handleFileStream(config, filename, req, res, contentType).catch(() => {
           res.status(404);
           res.set('Content-Type', 'text/plain');
           res.end('File not found.');
         });
+        return;
+      }
+
+      let data = await filesController.getFileData(config, filename).catch(() => {
+        res.status(404);
+        res.set('Content-Type', 'text/plain');
+        res.end('File not found.');
+      });
+      if (!data) {
+        return;
+      }
+      file = new Parse.File(filename, { base64: data.toString('base64') }, contentType);
+      const afterFind = await triggers.maybeRunFileTrigger(
+        triggers.Types.afterFind,
+        { file, forceDownload: false },
+        config,
+        fileAuth
+      );
+
+      if (afterFind?.file) {
+        contentType = mime.getType(afterFind.file._name);
+        data = Buffer.from(afterFind.file._data, 'base64');
+      }
+
+      res.status(200);
+      res.set('Content-Type', contentType);
+      res.set('Content-Length', data.length);
+      if (afterFind.forceDownload) {
+        res.set('Content-Disposition', `attachment;filename=${afterFind.file._name}`);
+      }
+      res.end(data);
+    } catch (e) {
+      const err = triggers.resolveError(e, {
+        code: Parse.Error.SCRIPT_FAILED,
+        message: `Could not find file: ${filename}.`,
+      });
+      res.status(403);
+      res.json({ code: err.code, error: err.message });
     }
   }
 
   async createHandler(req, res, next) {
+    if (req.auth.isReadOnly) {
+      const error = createSanitizedHttpError(403, "read-only masterKey isn't allowed to create a file.", req.config);
+      res.status(error.status);
+      res.end(`{"error":"${error.message}"}`);
+      return;
+    }
     const config = req.config;
     const user = req.auth.user;
     const isMaster = req.auth.isMaster;
@@ -142,6 +186,7 @@ export class FilesRouter {
 
     const fileExtensions = config.fileUpload?.fileExtensions;
     if (!isMaster && fileExtensions) {
+      const mime = (await import('mime')).default;
       const isValidExtension = extension => {
         return fileExtensions.some(ext => {
           if (ext === '*') {
@@ -153,22 +198,70 @@ export class FilesRouter {
           }
         });
       };
-      let extension = contentType;
-      if (filename && filename.includes('.')) {
-        extension = filename.substring(filename.lastIndexOf('.') + 1);
-      } else if (contentType && contentType.includes('/')) {
-        extension = contentType.split('/')[1];
-      }
-      extension = extension?.split(' ')?.join('');
-
-      if (extension && !isValidExtension(extension)) {
+      const rejectExtension = ext => {
         next(
           new Parse.Error(
             Parse.Error.FILE_SAVE_ERROR,
-            `File upload of extension ${extension} is disabled.`
+            `File upload of extension ${ext} is disabled.`
           )
         );
+      };
+
+      // Parse the filename extension token, stripping MIME parameters and whitespace.
+      let extension = Utils.getFileExtension(filename);
+      extension = extension?.split(';')[0]?.replace(/\s+/g, '');
+
+      const isExtensionRecognized = extension && mime.getType(filename);
+      if (extension && !isValidExtension(extension)) {
+        rejectExtension(extension);
         return;
+      }
+
+      // When the filename extension is not recognized by `mime`,
+      // `FilesController.createFile` cannot derive a Content-Type from the
+      // filename and preserves the client-supplied Content-Type verbatim, so the
+      // type the file is actually served as must be validated. Skip this when
+      // extension filtering is disabled (`*`).
+      const allowsAllExtensions = fileExtensions.includes('*');
+      if (!isExtensionRecognized && contentType && !allowsAllExtensions) {
+        const slashIndex = contentType.indexOf('/');
+        const type = slashIndex > 0 ? contentType.slice(0, slashIndex).trim() : '';
+        const subtype =
+          slashIndex > 0 ? contentType.slice(slashIndex + 1).split(';')[0].trim() : '';
+        // A valid media type is `type/subtype` where both are non-empty `token`s
+        // (RFC 9110 §5.6.2). Reject anything else.
+        const token = /^[!#$%&'*+\-.^_`|~A-Za-z0-9]+$/;
+        if (!token.test(type) || !token.test(subtype)) {
+          // A Content-Type that does not parse as `type/subtype` with valid,
+          // non-empty type AND subtype tokens is malformed: there is no valid MIME
+          // type without a subtype (RFC 9110 §8.3.1), and malformed tokens such as
+          // `image//svg+xml` or `text/plain,text/html` are equally unparseable.
+          // Browsers cannot parse such values and fall back to MIME-sniffing the
+          // file body, which can render HTML/script markers as active content on
+          // storage adapters that serve the stored Content-Type (e.g. `image`,
+          // `image/`). Surface the precise blocklist message when the bare token
+          // names a blocked extension (e.g. a no-slash `svg`), otherwise reject the
+          // unparseable Content-Type.
+          const bareToken = (slashIndex < 0 ? contentType.split(';')[0] : type).replace(
+            /\s+/g,
+            ''
+          );
+          if (bareToken && !isValidExtension(bareToken)) {
+            rejectExtension(bareToken);
+            return;
+          }
+          next(new Parse.Error(Parse.Error.FILE_SAVE_ERROR, 'Invalid Content-Type.'));
+          return;
+        }
+        // Validate the well-formed Content-Type subtype against the blocklist, e.g.
+        // "image/svg+xml" -> "svg+xml", "image/svg+xml;charset=utf-8" -> "svg+xml".
+        // Valid custom/vendor types (e.g. "application/vnd.api+json") parse and are
+        // allowed; only blocked subtypes are rejected.
+        const contentTypeExtension = subtype.replace(/\s+/g, '');
+        if (!isValidExtension(contentTypeExtension)) {
+          rejectExtension(contentTypeExtension);
+          return;
+        }
       }
     }
 
@@ -210,8 +303,6 @@ export class FilesRouter {
       }
       // if the file returned by the trigger has already been saved skip saving anything
       if (!saveResult) {
-        // if the ParseFile returned is type uri, download the file before saving it
-        await addFileDataIfNeeded(fileObject.file);
         // update fileSize
         const bufferData = Buffer.from(fileObject.file._data, 'base64');
         fileObject.fileSize = Buffer.byteLength(bufferData);
@@ -258,6 +349,12 @@ export class FilesRouter {
   }
 
   async deleteHandler(req, res, next) {
+    if (req.auth.isReadOnly) {
+      const error = createSanitizedHttpError(403, "read-only masterKey isn't allowed to delete a file.", req.config);
+      res.status(error.status);
+      res.end(`{"error":"${error.message}"}`);
+      return;
+    }
     try {
       const { filesController } = req.config;
       const { filename } = req.params;
@@ -296,14 +393,46 @@ export class FilesRouter {
   async metadataHandler(req, res) {
     try {
       const config = Config.get(req.params.appId);
+      if (!config) {
+        res.status(200);
+        res.json({});
+        return;
+      }
       const { filesController } = config;
-      const { filename } = req.params;
-      const data = await filesController.getMetadata(filename);
+      let { filename } = req.params;
+      const file = new Parse.File(filename, { base64: '' });
+      const fileAuth = await FilesRouter._resolveAuth(req, config);
+      const triggerResult = await triggers.maybeRunFileTrigger(
+        triggers.Types.beforeFind,
+        { file },
+        config,
+        fileAuth
+      );
+      if (triggerResult?.file?._name) {
+        filename = triggerResult.file._name;
+      }
+      const data = await filesController.getMetadata(filename).catch(() => {
+        res.status(200);
+        res.json({});
+      });
+      if (!data) {
+        return;
+      }
+      await triggers.maybeRunFileTrigger(
+        triggers.Types.afterFind,
+        { file },
+        config,
+        fileAuth
+      );
       res.status(200);
       res.json(data);
     } catch (e) {
-      res.status(200);
-      res.json({});
+      const err = triggers.resolveError(e, {
+        code: Parse.Error.SCRIPT_FAILED,
+        message: 'Could not get file metadata.',
+      });
+      res.status(403);
+      res.json({ code: err.code, error: err.message });
     }
   }
 }

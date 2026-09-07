@@ -45,6 +45,9 @@ node_modules
 .vscode
 
 # Babel.js
+# lib/ is intentionally NOT ignored: back4app commits the build output
+# types/* once we have full typescript support, we can generate types from the typescript files
+!types/tsconfig.json
 
 # cache folder
 .cache
@@ -61,3 +64,6 @@ node_modules
 
 # Redis Dump
 dump.rdb
+
+# AI agents
+.claude

@@ -8,7 +8,7 @@ export class AudiencesRouter extends ClassesRouter {
   }
 
   handleFind(req) {
-    const body = Object.assign(req.body, ClassesRouter.JSONFromQuery(req.query));
+    const body = Object.assign(req.body || {}, ClassesRouter.JSONFromQuery(req.query));
     const options = ClassesRouter.optionsFromBody(body, req.config.defaultLimit);
 
     return rest
@@ -18,7 +18,6 @@ export class AudiencesRouter extends ClassesRouter {
         '_Audience',
         body.where,
         options,
-        req.info.clientSDK,
         req.info.context
       )
       .then(response => {

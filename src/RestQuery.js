@@ -3,10 +3,12 @@
 
 var SchemaController = require('./Controllers/SchemaController');
 var Parse = require('parse/node').Parse;
+var logger = require('./logger').default;
 const triggers = require('./triggers');
 const { continueWhile } = require('parse/lib/node/promiseUtils');
 const AlwaysSelectedKeys = ['objectId', 'createdAt', 'updatedAt', 'ACL'];
 const { enforceRoleSecurity } = require('./SharedRest');
+const { createSanitizedError } = require('./Error');
 
 // restOptions can include:
 //   skip
@@ -29,7 +31,6 @@ const { enforceRoleSecurity } = require('./SharedRest');
  * @param options.className {string} The name of the class to query
  * @param options.restWhere {object} The where object for the query
  * @param options.restOptions {object} The options object for the query
- * @param options.clientSDK {string} The client SDK that is performing the query
  * @param options.runAfterFind {boolean} Whether to run the afterFind trigger
  * @param options.runBeforeFind {boolean} Whether to run the beforeFind trigger
  * @param options.context {object} The context object for the query
@@ -42,7 +43,6 @@ async function RestQuery({
   className,
   restWhere = {},
   restOptions = {},
-  clientSDK,
   runAfterFind = true,
   runBeforeFind = true,
   context,
@@ -50,7 +50,8 @@ async function RestQuery({
   if (![RestQuery.Method.find, RestQuery.Method.get].includes(method)) {
     throw new Parse.Error(Parse.Error.INVALID_QUERY, 'bad query type');
   }
-  enforceRoleSecurity(method, className, auth);
+  const isGet = method === RestQuery.Method.get;
+  enforceRoleSecurity(method, className, auth, config);
   const result = runBeforeFind
     ? await triggers.maybeRunQueryTrigger(
       triggers.Types.beforeFind,
@@ -60,7 +61,7 @@ async function RestQuery({
       config,
       auth,
       context,
-      method === RestQuery.Method.get
+      isGet
     )
     : Promise.resolve({ restWhere, restOptions });
 
@@ -70,9 +71,9 @@ async function RestQuery({
     className,
     result.restWhere || restWhere,
     result.restOptions || restOptions,
-    clientSDK,
     runAfterFind,
-    context
+    context,
+    isGet
   );
 }
 
@@ -89,7 +90,6 @@ RestQuery.Method = Object.freeze({
  * @param className
  * @param restWhere
  * @param restOptions
- * @param clientSDK
  * @param runAfterFind
  * @param context
  */
@@ -99,24 +99,24 @@ function _UnsafeRestQuery(
   className,
   restWhere = {},
   restOptions = {},
-  clientSDK,
   runAfterFind = true,
-  context
+  context,
+  isGet
 ) {
   this.config = config;
   this.auth = auth;
   this.className = className;
   this.restWhere = restWhere;
   this.restOptions = restOptions;
-  this.clientSDK = clientSDK;
   this.runAfterFind = runAfterFind;
   this.response = null;
   this.findOptions = {};
   this.context = context || {};
+  this.isGet = isGet;
   if (!this.auth.isMaster) {
     if (this.className == '_Session') {
       if (!this.auth.user) {
-        throw new Parse.Error(Parse.Error.INVALID_SESSION_TOKEN, 'Invalid session token');
+        throw createSanitizedError(Parse.Error.INVALID_SESSION_TOKEN, 'Invalid session token', config);
       }
       this.restWhere = {
         $and: [
@@ -276,6 +276,9 @@ function _UnsafeRestQuery(
 _UnsafeRestQuery.prototype.execute = function (executeOptions) {
   return Promise.resolve()
     .then(() => {
+      return this.validateQueryDepth();
+    })
+    .then(() => {
       return this.buildRestWhere();
     })
     .then(() => {
@@ -283,6 +286,9 @@ _UnsafeRestQuery.prototype.execute = function (executeOptions) {
     })
     .then(() => {
       return this.handleIncludeAll();
+    })
+    .then(() => {
+      return this.validateIncludeComplexity();
     })
     .then(() => {
       return this.handleExcludeKeys();
@@ -308,7 +314,7 @@ _UnsafeRestQuery.prototype.execute = function (executeOptions) {
 };
 
 _UnsafeRestQuery.prototype.each = function (callback) {
-  const { config, auth, className, restWhere, restOptions, clientSDK } = this;
+  const { config, auth, className, restWhere, restOptions } = this;
   // if the limit is set, use it
   restOptions.limit = restOptions.limit || 100;
   restOptions.order = 'objectId';
@@ -327,7 +333,6 @@ _UnsafeRestQuery.prototype.each = function (callback) {
         className,
         restWhere,
         restOptions,
-        clientSDK,
         this.runAfterFind,
         this.context
       );
@@ -343,6 +348,43 @@ _UnsafeRestQuery.prototype.each = function (callback) {
   );
 };
 
+_UnsafeRestQuery.prototype.validateQueryDepth = function () {
+  if (this.auth.isMaster || this.auth.isMaintenance) {
+    return;
+  }
+  const rc = this.config.requestComplexity;
+  if (!rc || rc.queryDepth === -1) {
+    return;
+  }
+  const maxDepth = rc.queryDepth;
+  const checkDepth = (node, depth) => {
+    if (depth > maxDepth) {
+      throw new Parse.Error(
+        Parse.Error.INVALID_QUERY,
+        `Query condition nesting depth exceeds maximum allowed depth of ${maxDepth}`
+      );
+    }
+    if (node === null || typeof node !== 'object') {
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        checkDepth(item, depth);
+      }
+      return;
+    }
+    // Descend into every value so that logical operators ($or/$and/$nor) nested
+    // under field-level operators (e.g. $elemMatch, $not) or plain field names are
+    // still counted. Only logical operators increase the depth, which preserves the
+    // documented meaning of `queryDepth`.
+    for (const key of Object.keys(node)) {
+      const isLogical = key === '$or' || key === '$and' || key === '$nor';
+      checkDepth(node[key], isLogical ? depth + 1 : depth);
+    }
+  };
+  checkDepth(this.restWhere, 0);
+};
+
 _UnsafeRestQuery.prototype.buildRestWhere = function () {
   return Promise.resolve()
     .then(() => {
@@ -353,6 +395,9 @@ _UnsafeRestQuery.prototype.buildRestWhere = function () {
     })
     .then(() => {
       return this.validateClientClassCreation();
+    })
+    .then(() => {
+      return this.checkSubqueryDepth();
     })
     .then(() => {
       return this.replaceSelect();
@@ -402,6 +447,35 @@ _UnsafeRestQuery.prototype.redirectClassNameForKey = function () {
     .then(newClassName => {
       this.className = newClassName;
       this.redirectClassName = newClassName;
+
+      // Re-apply security checks for the redirected class name, since the
+      // checks in the constructor and in rest.find ran against the original
+      // class name before the redirect.
+      if (!this.auth.isMaster) {
+        enforceRoleSecurity('find', this.className, this.auth, this.config);
+
+        if (this.className === '_Session') {
+          if (!this.auth.user) {
+            throw createSanitizedError(
+              Parse.Error.INVALID_SESSION_TOKEN,
+              'Invalid session token',
+              this.config
+            );
+          }
+          this.restWhere = {
+            $and: [
+              this.restWhere,
+              {
+                user: {
+                  __type: 'Pointer',
+                  className: '_User',
+                  objectId: this.auth.user.id,
+                },
+              },
+            ],
+          };
+        }
+      }
     });
 };
 
@@ -417,9 +491,10 @@ _UnsafeRestQuery.prototype.validateClientClassCreation = function () {
       .then(schemaController => schemaController.hasClass(this.className))
       .then(hasClass => {
         if (hasClass !== true) {
-          throw new Parse.Error(
+          throw createSanitizedError(
             Parse.Error.OPERATION_FORBIDDEN,
-            'This user is not allowed to access ' + 'non-existent class: ' + this.className
+            'This user is not allowed to access ' + 'non-existent class: ' + this.className,
+            this.config
           );
         }
       });
@@ -444,6 +519,22 @@ function transformInQuery(inQueryObject, className, results) {
     inQueryObject['$in'] = values;
   }
 }
+
+_UnsafeRestQuery.prototype.checkSubqueryDepth = function () {
+  if (this.auth.isMaster || this.auth.isMaintenance) {
+    return;
+  }
+  const rc = this.config.requestComplexity;
+  if (!rc || rc.subqueryDepth === -1) {
+    return;
+  }
+  const depth = this.context._subqueryDepth || 0;
+  if (depth > rc.subqueryDepth) {
+    const message = `Subquery nesting depth exceeds maximum allowed depth of ${rc.subqueryDepth}`;
+    logger.warn(message);
+    throw new Parse.Error(Parse.Error.INVALID_QUERY, message);
+  }
+};
 
 // Replaces a $inQuery clause by running the subquery, if there is an
 // $inQuery clause.
@@ -472,6 +563,7 @@ _UnsafeRestQuery.prototype.replaceInQuery = async function () {
     additionalOptions.readPreference = this.restOptions.readPreference;
   }
 
+  const childContext = { ...this.context, _subqueryDepth: (this.context._subqueryDepth || 0) + 1 };
   const subquery = await RestQuery({
     method: RestQuery.Method.find,
     config: this.config,
@@ -479,7 +571,7 @@ _UnsafeRestQuery.prototype.replaceInQuery = async function () {
     className: inQueryValue.className,
     restWhere: inQueryValue.where,
     restOptions: additionalOptions,
-    context: this.context,
+    context: childContext,
   });
   return subquery.execute().then(response => {
     transformInQuery(inQueryObject, subquery.className, response.results);
@@ -532,6 +624,7 @@ _UnsafeRestQuery.prototype.replaceNotInQuery = async function () {
     additionalOptions.readPreference = this.restOptions.readPreference;
   }
 
+  const childContext = { ...this.context, _subqueryDepth: (this.context._subqueryDepth || 0) + 1 };
   const subquery = await RestQuery({
     method: RestQuery.Method.find,
     config: this.config,
@@ -539,7 +632,7 @@ _UnsafeRestQuery.prototype.replaceNotInQuery = async function () {
     className: notInQueryValue.className,
     restWhere: notInQueryValue.where,
     restOptions: additionalOptions,
-    context: this.context,
+    context: childContext,
   });
 
   return subquery.execute().then(response => {
@@ -605,6 +698,7 @@ _UnsafeRestQuery.prototype.replaceSelect = async function () {
     additionalOptions.readPreference = this.restOptions.readPreference;
   }
 
+  const childContext = { ...this.context, _subqueryDepth: (this.context._subqueryDepth || 0) + 1 };
   const subquery = await RestQuery({
     method: RestQuery.Method.find,
     config: this.config,
@@ -612,7 +706,7 @@ _UnsafeRestQuery.prototype.replaceSelect = async function () {
     className: selectValue.query.className,
     restWhere: selectValue.query.where,
     restOptions: additionalOptions,
-    context: this.context,
+    context: childContext,
   });
 
   return subquery.execute().then(response => {
@@ -668,6 +762,7 @@ _UnsafeRestQuery.prototype.replaceDontSelect = async function () {
     additionalOptions.readPreference = this.restOptions.readPreference;
   }
 
+  const childContext = { ...this.context, _subqueryDepth: (this.context._subqueryDepth || 0) + 1 };
   const subquery = await RestQuery({
     method: RestQuery.Method.find,
     config: this.config,
@@ -675,7 +770,7 @@ _UnsafeRestQuery.prototype.replaceDontSelect = async function () {
     className: dontSelectValue.query.className,
     restWhere: dontSelectValue.query.where,
     restOptions: additionalOptions,
-    context: this.context,
+    context: childContext,
   });
 
   return subquery.execute().then(response => {
@@ -794,12 +889,46 @@ _UnsafeRestQuery.prototype.denyProtectedFields = async function () {
       this.auth,
       this.findOptions
     ) || [];
-  for (const key of protectedFields) {
-    if (this.restWhere[key]) {
-      throw new Parse.Error(
-        Parse.Error.OPERATION_FORBIDDEN,
-        `This user is not allowed to query ${key} on class ${this.className}`
-      );
+  const checkWhere = (where) => {
+    if (typeof where !== 'object' || where === null) {
+      return;
+    }
+    for (const whereKey of Object.keys(where)) {
+      const rootField = whereKey.split('.')[0];
+      if (protectedFields.includes(whereKey) || protectedFields.includes(rootField)) {
+        throw createSanitizedError(
+          Parse.Error.OPERATION_FORBIDDEN,
+          `This user is not allowed to query ${whereKey} on class ${this.className}`,
+          this.config
+        );
+      }
+    }
+    for (const op of ['$or', '$and', '$nor']) {
+      if (where[op] !== undefined && !Array.isArray(where[op])) {
+        throw createSanitizedError(
+          Parse.Error.INVALID_QUERY,
+          `${op} must be an array`,
+          this.config
+        );
+      }
+      if (Array.isArray(where[op])) {
+        where[op].forEach(subQuery => checkWhere(subQuery));
+      }
+    }
+  };
+  checkWhere(this.restWhere);
+
+  // Check sort keys against protected fields
+  if (this.findOptions.sort) {
+    for (const sortKey of Object.keys(this.findOptions.sort)) {
+      const rootField = sortKey.split('.')[0];
+      if (protectedFields.includes(sortKey) || protectedFields.includes(rootField)) {
+        throw createSanitizedError(
+          Parse.Error.OPERATION_FORBIDDEN,
+          `This user is not allowed to sort by ${sortKey} on class ${this.className}`,
+          this.config
+        );
+      }
     }
   }
 };
@@ -833,6 +962,29 @@ _UnsafeRestQuery.prototype.handleIncludeAll = function () {
     });
 };
 
+_UnsafeRestQuery.prototype.validateIncludeComplexity = function () {
+  if (this.auth.isMaster || this.auth.isMaintenance) {
+    return;
+  }
+  const rc = this.config.requestComplexity;
+  if (!rc) {
+    return;
+  }
+  if (rc.includeDepth !== -1 && this.include && this.include.length > 0) {
+    const maxDepth = Math.max(...this.include.map(path => path.length));
+    if (maxDepth > rc.includeDepth) {
+      const message = `Include depth of ${maxDepth} exceeds maximum allowed depth of ${rc.includeDepth}`;
+      logger.warn(message);
+      throw new Parse.Error(Parse.Error.INVALID_QUERY, message);
+    }
+  }
+  if (rc.includeCount !== -1 && this.include && this.include.length > rc.includeCount) {
+    const message = `Number of include fields (${this.include.length}) exceeds maximum allowed (${rc.includeCount})`;
+    logger.warn(message);
+    throw new Parse.Error(Parse.Error.INVALID_QUERY, message);
+  }
+};
+
 // Updates property `this.keys` to contain all keys but the ones unselected.
 _UnsafeRestQuery.prototype.handleExcludeKeys = function () {
   if (!this.excludeKeys) {
@@ -852,31 +1004,54 @@ _UnsafeRestQuery.prototype.handleExcludeKeys = function () {
 };
 
 // Augments this.response with data at the paths provided in this.include.
-_UnsafeRestQuery.prototype.handleInclude = function () {
+_UnsafeRestQuery.prototype.handleInclude = async function () {
   if (this.include.length == 0) {
     return;
   }
 
-  var pathResponse = includePath(
-    this.config,
-    this.auth,
-    this.response,
-    this.include[0],
-    this.context,
-    this.restOptions
-  );
-  if (pathResponse.then) {
-    return pathResponse.then(newResponse => {
-      this.response = newResponse;
-      this.include = this.include.slice(1);
-      return this.handleInclude();
+  const indexedResults = this.response.results.reduce((indexed, result, i) => {
+    indexed[result.objectId] = i;
+    return indexed;
+  }, {});
+
+  // Build the execution tree
+  const executionTree = {}
+  this.include.forEach(path => {
+    let current = executionTree;
+    path.forEach((node) => {
+      if (!current[node]) {
+        current[node] = {
+          path,
+          children: {}
+        };
+      }
+      current = current[node].children
     });
-  } else if (this.include.length > 0) {
-    this.include = this.include.slice(1);
-    return this.handleInclude();
+  });
+
+  const recursiveExecutionTree = async (treeNode) => {
+    const { path, children } = treeNode;
+    const pathResponse = includePath(
+      this.config,
+      this.auth,
+      this.response,
+      path,
+      this.context,
+      this.restOptions,
+      this,
+    );
+    if (pathResponse.then) {
+      const newResponse = await pathResponse
+      newResponse.results.forEach(newObject => {
+        // We hydrate the root of each result with sub results
+        this.response.results[indexedResults[newObject.objectId]][path[0]] = newObject[path[0]];
+      })
+    }
+    return Promise.all(Object.values(children).map(recursiveExecutionTree));
   }
 
-  return pathResponse;
+  await Promise.all(Object.values(executionTree).map(recursiveExecutionTree));
+  this.include = []
 };
 
 //Returns a promise of a processed set of results
@@ -914,7 +1089,8 @@ _UnsafeRestQuery.prototype.runAfterFindTrigger = function () {
       this.response.results,
       this.config,
       parseQuery,
-      this.context
+      this.context,
+      this.isGet
     )
     .then(results => {
       // Ensure we properly set the className back
@@ -1013,7 +1189,6 @@ function includePath(config, auth, response, path, context, restOptions = {}) {
   } else if (restOptions.readPreference) {
     includeRestOptions.readPreference = restOptions.readPreference;
   }
-
   const queryPromises = Object.keys(pointersHash).map(async className => {
     const objectIds = Array.from(pointersHash[className]);
     let where;
@@ -1052,7 +1227,6 @@ function includePath(config, auth, response, path, context, restOptions = {}) {
       }
       return replace;
     }, {});
-
     var resp = {
       results: replacePointers(response.results, path, replace),
     };
@@ -1144,6 +1318,10 @@ function findObjectWithKey(root, key) {
         return answer;
       }
     }
+    // Arrays are fully traversed above; returning here avoids re-walking the same
+    // elements through the `for (subkey in root)` loop below, which would make this
+    // function O(2^n) for nested arrays (e.g. deeply nested $or/$and/$nor).
+    return;
   }
   if (root && root[key]) {
     return root;

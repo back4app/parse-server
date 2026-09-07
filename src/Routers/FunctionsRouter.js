@@ -8,6 +8,7 @@ import { promiseEnforceMasterKeyAccess, promiseEnsureIdempotency } from '../midd
 import { jobStatusHandler } from '../StatusHandler';
 import _ from 'lodash';
 import { logger } from '../logger';
+import { createSanitizedError } from '../Error';
 
 function parseObject(obj, config) {
   if (Array.isArray(obj)) {
@@ -58,7 +59,14 @@ export class FunctionsRouter extends PromiseRouter {
   }
 
   static handleCloudJob(req) {
-    const jobName = req.params.jobName || req.body.jobName;
+    if (req.auth.isReadOnly) {
+      throw createSanitizedError(
+        Parse.Error.OPERATION_FORBIDDEN,
+        "read-only masterKey isn't allowed to run a job.",
+        req.config
+      );
+    }
+    const jobName = req.params.jobName || req.body?.jobName;
     const applicationId = req.config.applicationId;
     const jobHandler = jobStatusHandler(req.config);
     const jobFunction = triggers.getJob(jobName, applicationId);
@@ -73,10 +81,11 @@ export class FunctionsRouter extends PromiseRouter {
       headers: req.config.headers,
       ip: req.config.ip,
       jobName,
+      config: req.config,
       message: jobHandler.setMessage.bind(jobHandler),
     };
 
-    return jobHandler.setRunning(jobName, params).then(jobStatus => {
+    return jobHandler.setRunning(jobName).then(jobStatus => {
       request.jobId = jobStatus.objectId;
       // run the function async
       process.nextTick(() => {
@@ -129,6 +138,7 @@ export class FunctionsRouter extends PromiseRouter {
     params = parseParams(params, req.config);
     const request = {
       params: params,
+      config: req.config,
       master: req.auth && req.auth.isMaster,
       user: req.auth && req.auth.user,
       installationId: req.info.installationId,

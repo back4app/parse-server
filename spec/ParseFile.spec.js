@@ -13,6 +13,13 @@ for (let i = 0; i < str.length; i++) {
 }
 
 describe('Parse.File testing', () => {
+  let loggerErrorSpy;
+
+  beforeEach(() => {
+    const logger = require('../lib/logger').default;
+    loggerErrorSpy = spyOn(logger, 'error').and.callThrough();
+  });
+
   describe('creating files', () => {
     it('works with Content-Type', done => {
       const headers = {
@@ -146,6 +153,7 @@ describe('Parse.File testing', () => {
         const b = response.data;
         expect(b.url).toMatch(/^http:\/\/localhost:8378\/1\/files\/test\/.*thefile.jpg$/);
         // missing X-Parse-Master-Key header
+        loggerErrorSpy.calls.reset();
         request({
           method: 'DELETE',
           headers: {
@@ -156,8 +164,10 @@ describe('Parse.File testing', () => {
         }).then(fail, response => {
           const del_b = response.data;
           expect(response.status).toEqual(403);
-          expect(del_b.error).toMatch(/unauthorized/);
+          expect(del_b.error).toBe('Permission denied');
+          expect(loggerErrorSpy).toHaveBeenCalledWith('Sanitized error:', jasmine.stringContaining('unauthorized: master key is required'));
           // incorrect X-Parse-Master-Key header
+          loggerErrorSpy.calls.reset();
           request({
             method: 'DELETE',
             headers: {
@@ -169,7 +179,8 @@ describe('Parse.File testing', () => {
           }).then(fail, response => {
             const del_b2 = response.data;
             expect(response.status).toEqual(403);
-            expect(del_b2.error).toMatch(/unauthorized/);
+            expect(del_b2.error).toBe('Permission denied');
+            expect(loggerErrorSpy).toHaveBeenCalledWith('Sanitized error:', jasmine.stringContaining('unauthorized: master key is required'));
             done();
           });
         });
@@ -376,6 +387,26 @@ describe('Parse.File testing', () => {
       expect(b.name).toMatch(/\.html$/);
       response = await request({ url: b.url });
       expect(response.headers['content-type']).toMatch(/^text\/html/);
+    });
+
+    it('works without Content-Type and extension', async () => {
+      await reconfigureServer({
+        fileUpload: {
+          enableForPublic: true,
+        },
+      });
+      const headers = {
+        'X-Parse-Application-Id': 'test',
+        'X-Parse-REST-API-Key': 'rest',
+      };
+      const result = await request({
+        method: 'POST',
+        headers: headers,
+        url: 'http://localhost:8378/1/files/file',
+        body: '<html></html>\n',
+      });
+      expect(result.data.url.includes('file.txt')).toBeTrue();
+      expect(result.data.name.includes('file.txt')).toBeTrue();
     });
 
     it('filename is url encoded', done => {
@@ -631,6 +662,80 @@ describe('Parse.File testing', () => {
         const body = response.text;
         expect(body).toEqual('{"code":122,"error":"Filename not provided."}');
         done();
+      });
+    });
+
+    describe('URI-backed file upload is disabled to prevent SSRF attack', () => {
+      const express = require('express');
+      let testServer;
+      let testServerPort;
+      let requestsMade;
+
+      beforeEach(async () => {
+        requestsMade = [];
+        const app = express();
+        app.use((req, res) => {
+          requestsMade.push({ url: req.url, method: req.method });
+          res.status(200).send('test file content');
+        });
+        testServer = app.listen(0);
+        testServerPort = testServer.address().port;
+      });
+
+      afterEach(async () => {
+        if (testServer) {
+          await new Promise(resolve => testServer.close(resolve));
+        }
+        Parse.Cloud._removeAllHooks();
+      });
+
+      it('does not access URI when file upload attempted over REST', async () => {
+        const response = await request({
+          method: 'POST',
+          url: 'http://localhost:8378/1/classes/TestClass',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Parse-Application-Id': 'test',
+            'X-Parse-REST-API-Key': 'rest',
+          },
+          body: {
+            file: {
+              __type: 'File',
+              name: 'test.txt',
+              _source: {
+                format: 'uri',
+                uri: `http://127.0.0.1:${testServerPort}/secret-file.txt`,
+              },
+            },
+          },
+        });
+        expect(response.status).toBe(201);
+        // Verify no HTTP request was made to the URI
+        expect(requestsMade.length).toBe(0);
+      });
+
+      it('does not access URI when file created in beforeSave trigger', async () => {
+        Parse.Cloud.beforeSave(Parse.File, () => {
+          return new Parse.File('trigger-file.txt', {
+            uri: `http://127.0.0.1:${testServerPort}/secret-file.txt`,
+          });
+        });
+        await expectAsync(
+          request({
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/octet-stream',
+              'X-Parse-Application-Id': 'test',
+              'X-Parse-REST-API-Key': 'rest',
+            },
+            url: 'http://localhost:8378/1/files/test.txt',
+            body: 'test content',
+          })
+        ).toBeRejectedWith(jasmine.objectContaining({
+          status: 400
+        }));
+        // Verify no HTTP request was made to the URI
+        expect(requestsMade.length).toBe(0);
       });
     });
   });
@@ -1325,6 +1430,318 @@ describe('Parse.File testing', () => {
       for (const type of ['plain', 'txt', 'png', 'jpg', 'gif', 'doc']) {
         const file = new Parse.File(`parse-server-logo.${type}`, { base64: 'ParseA==' });
         await file.save();
+      }
+    });
+
+    it('default should block SVG files', async () => {
+      await reconfigureServer({
+        fileUpload: {
+          enableForPublic: true,
+        },
+      });
+      const headers = {
+        'X-Parse-Application-Id': 'test',
+        'X-Parse-REST-API-Key': 'rest',
+      };
+      const svgContent = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>').toString('base64');
+      for (const extension of ['svg', 'SVG', 'Svg']) {
+        await expectAsync(
+          request({
+            method: 'POST',
+            headers: headers,
+            url: `http://localhost:8378/1/files/malicious.${extension}`,
+            body: JSON.stringify({
+              _ApplicationId: 'test',
+              _JavaScriptKey: 'test',
+              _ContentType: 'image/svg+xml',
+              base64: svgContent,
+            }),
+          }).catch(e => {
+            throw new Error(e.data.error);
+          })
+        ).toBeRejectedWith(
+          new Parse.Error(Parse.Error.FILE_SAVE_ERROR, `File upload of extension ${extension} is disabled.`)
+        );
+      }
+    });
+
+    it('default should block SVG content type without file extension', async () => {
+      await reconfigureServer({
+        fileUpload: {
+          enableForPublic: true,
+        },
+      });
+      const svgContent = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>').toString('base64');
+      await expectAsync(
+        request({
+          method: 'POST',
+          url: 'http://localhost:8378/1/files/file',
+          body: JSON.stringify({
+            _ApplicationId: 'test',
+            _JavaScriptKey: 'test',
+            _ContentType: 'image/svg+xml',
+            base64: svgContent,
+          }),
+        }).catch(e => {
+          throw new Error(e.data.error);
+        })
+      ).toBeRejectedWith(
+        new Parse.Error(Parse.Error.FILE_SAVE_ERROR, `File upload of extension svg+xml is disabled.`)
+      );
+    });
+
+    it('default should block non-standard extension variants preserving a dangerous content type', async () => {
+      await reconfigureServer({
+        fileUpload: {
+          enableForPublic: true,
+        },
+      });
+      const svgContent = Buffer.from(
+        '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+      ).toString('base64');
+      const filenames = [
+        'malicious.svg~',
+        'malicious.svg.tmp',
+        'malicious.svg.bak',
+        'malicious.svg.backup',
+        'malicious.xhtml.bak',
+        'malicious.xml.tmp',
+      ];
+      for (const filename of filenames) {
+        await expectAsync(
+          request({
+            method: 'POST',
+            url: `http://localhost:8378/1/files/${filename}`,
+            body: JSON.stringify({
+              _ApplicationId: 'test',
+              _JavaScriptKey: 'test',
+              _ContentType: 'image/svg+xml',
+              base64: svgContent,
+            }),
+          }).catch(e => {
+            throw new Error(e.data.error);
+          })
+        ).toBeRejectedWith(
+          new Parse.Error(
+            Parse.Error.FILE_SAVE_ERROR,
+            `File upload of extension svg+xml is disabled.`
+          )
+        );
+      }
+    });
+
+    it('default should block non-standard extension variants preserving a text/html content type', async () => {
+      await reconfigureServer({
+        fileUpload: {
+          enableForPublic: true,
+        },
+      });
+      const htmlContent = Buffer.from('<html><script>alert(1)</script></html>').toString('base64');
+      const filenames = ['malicious.html.old', 'malicious.htm~', 'malicious.html.bak'];
+      for (const filename of filenames) {
+        await expectAsync(
+          request({
+            method: 'POST',
+            url: `http://localhost:8378/1/files/${filename}`,
+            body: JSON.stringify({
+              _ApplicationId: 'test',
+              _JavaScriptKey: 'test',
+              _ContentType: 'text/html',
+              base64: htmlContent,
+            }),
+          }).catch(e => {
+            throw new Error(e.data.error);
+          })
+        ).toBeRejectedWith(
+          new Parse.Error(Parse.Error.FILE_SAVE_ERROR, `File upload of extension html is disabled.`)
+        );
+      }
+    });
+
+    it('default should allow a non-standard extension with a safe content type', async () => {
+      await reconfigureServer({
+        fileUpload: {
+          enableForPublic: true,
+        },
+      });
+      await expectAsync(
+        request({
+          method: 'POST',
+          url: 'http://localhost:8378/1/files/archive.bak',
+          body: JSON.stringify({
+            _ApplicationId: 'test',
+            _JavaScriptKey: 'test',
+            _ContentType: 'image/png',
+            base64: 'ParseA==',
+          }),
+        }).catch(e => {
+          throw new Error(e.data.error);
+        })
+      ).toBeResolved();
+    });
+
+    it('default should block a malformed content type with no slash', async () => {
+      await reconfigureServer({
+        fileUpload: {
+          enableForPublic: true,
+        },
+      });
+      const htmlContent = Buffer.from('<!DOCTYPE html><script>alert(1)</script>').toString(
+        'base64'
+      );
+      for (const filename of ['note.foo', 'data.bar']) {
+        await expectAsync(
+          request({
+            method: 'POST',
+            url: `http://localhost:8378/1/files/${filename}`,
+            body: JSON.stringify({
+              _ApplicationId: 'test',
+              _JavaScriptKey: 'test',
+              _ContentType: 'image',
+              base64: htmlContent,
+            }),
+          }).catch(e => {
+            throw new Error(e.data.error);
+          })
+        ).toBeRejectedWith(
+          new Parse.Error(Parse.Error.FILE_SAVE_ERROR, 'Invalid Content-Type.')
+        );
+      }
+    });
+
+    it('default should block a malformed content type with an empty subtype', async () => {
+      await reconfigureServer({
+        fileUpload: {
+          enableForPublic: true,
+        },
+      });
+      const htmlContent = Buffer.from('<!DOCTYPE html><script>alert(1)</script>').toString(
+        'base64'
+      );
+      for (const filename of ['note.foo', 'data.bar']) {
+        await expectAsync(
+          request({
+            method: 'POST',
+            url: `http://localhost:8378/1/files/${filename}`,
+            body: JSON.stringify({
+              _ApplicationId: 'test',
+              _JavaScriptKey: 'test',
+              _ContentType: 'image/',
+              base64: htmlContent,
+            }),
+          }).catch(e => {
+            throw new Error(e.data.error);
+          })
+        ).toBeRejectedWith(
+          new Parse.Error(Parse.Error.FILE_SAVE_ERROR, 'Invalid Content-Type.')
+        );
+      }
+    });
+
+    it('default should block a malformed content type when the filename has no extension', async () => {
+      await reconfigureServer({
+        fileUpload: {
+          enableForPublic: true,
+        },
+      });
+      const htmlContent = Buffer.from('<!DOCTYPE html><script>alert(1)</script>').toString(
+        'base64'
+      );
+      await expectAsync(
+        request({
+          method: 'POST',
+          url: 'http://localhost:8378/1/files/note',
+          body: JSON.stringify({
+            _ApplicationId: 'test',
+            _JavaScriptKey: 'test',
+            _ContentType: 'image',
+            base64: htmlContent,
+          }),
+        }).catch(e => {
+          throw new Error(e.data.error);
+        })
+      ).toBeRejectedWith(
+        new Parse.Error(Parse.Error.FILE_SAVE_ERROR, 'Invalid Content-Type.')
+      );
+    });
+
+    it('allows a malformed content type when all extensions are allowed', async () => {
+      await reconfigureServer({
+        fileUpload: {
+          enableForPublic: true,
+          fileExtensions: ['*'],
+        },
+      });
+      await expectAsync(
+        request({
+          method: 'POST',
+          url: 'http://localhost:8378/1/files/note.foo',
+          body: JSON.stringify({
+            _ApplicationId: 'test',
+            _JavaScriptKey: 'test',
+            _ContentType: 'image',
+            base64: 'ParseA==',
+          }),
+        }).catch(e => {
+          throw new Error(e.data.error);
+        })
+      ).toBeResolved();
+    });
+
+    it('default should allow a valid custom content type the mime package does not recognize', async () => {
+      await reconfigureServer({
+        fileUpload: {
+          enableForPublic: true,
+        },
+      });
+      // A well-formed `type/subtype` that `mime` does not recognize (e.g. a
+      // vendor type) must still be accepted; only malformed or blocked
+      // Content-Types are rejected.
+      await expectAsync(
+        request({
+          method: 'POST',
+          url: 'http://localhost:8378/1/files/note.foo',
+          body: JSON.stringify({
+            _ApplicationId: 'test',
+            _JavaScriptKey: 'test',
+            _ContentType: 'application/vnd.api+json',
+            base64: Buffer.from('{}').toString('base64'),
+          }),
+        }).catch(e => {
+          throw new Error(e.data.error);
+        })
+      ).toBeResolved();
+    });
+
+    it('default should block a malformed content type with invalid token characters', async () => {
+      await reconfigureServer({
+        fileUpload: {
+          enableForPublic: true,
+        },
+      });
+      const htmlContent = Buffer.from('<!DOCTYPE html><script>alert(1)</script>').toString(
+        'base64'
+      );
+      // Non-empty but malformed media types (extra slash, comma-separated values,
+      // whitespace) are not valid `type/subtype` tokens (RFC 9110 §5.6.2) and are
+      // sniffed by browsers, so they must be rejected too.
+      for (const contentType of ['image//svg+xml', 'text/plain,text/html', 'image/sv g']) {
+        await expectAsync(
+          request({
+            method: 'POST',
+            url: 'http://localhost:8378/1/files/note.foo',
+            body: JSON.stringify({
+              _ApplicationId: 'test',
+              _JavaScriptKey: 'test',
+              _ContentType: contentType,
+              base64: htmlContent,
+            }),
+          }).catch(e => {
+            throw new Error(e.data.error);
+          })
+        ).toBeRejectedWith(
+          new Parse.Error(Parse.Error.FILE_SAVE_ERROR, 'Invalid Content-Type.')
+        );
       }
     });
 

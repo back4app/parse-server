@@ -13,9 +13,11 @@ import {
   DatabaseOptions,
   FileUploadOptions,
   IdempotencyOptions,
+  LiveQueryOptions,
   LogLevels,
   PagesOptions,
   ParseServerOptions,
+  RequestComplexityOptions,
   SchemaOptions,
   SecurityOptions,
 } from './Options/Definitions';
@@ -31,6 +33,11 @@ function removeTrailingSlash(str) {
   }
   return str;
 }
+
+/**
+ * Config keys that need to be loaded asynchronously.
+ */
+const asyncKeys = ['publicServerURL'];
 
 export class Config {
   static get(applicationId: string, mount: string) {
@@ -56,9 +63,42 @@ export class Config {
     return config;
   }
 
+  async loadKeys() {
+    await Promise.all(
+      asyncKeys.map(async key => {
+        if (typeof this[`_${key}`] === 'function') {
+          try {
+            this[key] = await this[`_${key}`]();
+          } catch (error) {
+            throw new Error(`Failed to resolve async config key '${key}': ${error.message}`);
+          }
+        }
+      })
+    );
+
+    const cachedConfig = AppCache.get(this.appId);
+    if (cachedConfig) {
+      const updatedConfig = { ...cachedConfig };
+      asyncKeys.forEach(key => {
+        updatedConfig[key] = this[key];
+      });
+      AppCache.put(this.appId, updatedConfig);
+    }
+  }
+
+  static transformConfiguration(serverConfiguration) {
+    for (const key of Object.keys(serverConfiguration)) {
+      if (asyncKeys.includes(key) && typeof serverConfiguration[key] === 'function') {
+        serverConfiguration[`_${key}`] = serverConfiguration[key];
+        delete serverConfiguration[key];
+      }
+    }
+  }
+
   static put(serverConfiguration) {
     Config.validateOptions(serverConfiguration);
     Config.validateControllers(serverConfiguration);
+    Config.transformConfiguration(serverConfiguration);
     AppCache.put(serverConfiguration.appId, serverConfiguration);
     Config.setupPasswordValidator(serverConfiguration.passwordPolicy);
     return serverConfiguration;
@@ -91,9 +131,11 @@ export class Config {
     allowExpiredAuthDataToken,
     logLevels,
     rateLimit,
+    requestComplexity,
     databaseOptions,
     extendSessionOnUse,
     allowClientClassCreation,
+    liveQuery,
   }) {
     if (masterKey === readOnlyMasterKey) {
       throw new Error('masterKey and readOnlyMasterKey should be different');
@@ -115,11 +157,7 @@ export class Config {
       throw 'extendSessionOnUse must be a boolean value';
     }
 
-    if (publicServerURL) {
-      if (!publicServerURL.startsWith('http://') && !publicServerURL.startsWith('https://')) {
-        throw 'publicServerURL should be a valid HTTPS URL starting with https://';
-      }
-    }
+    this.validatePublicServerURL({ publicServerURL });
     this.validateSessionConfiguration(sessionLength, expireInactiveSessions);
     this.validateIps('masterKeyIps', masterKeyIps);
     this.validateIps('maintenanceKeyIps', maintenanceKeyIps);
@@ -135,10 +173,12 @@ export class Config {
     this.validateAllowExpiredAuthDataToken(allowExpiredAuthDataToken);
     this.validateRequestKeywordDenylist(requestKeywordDenylist);
     this.validateRateLimit(rateLimit);
+    this.validateRequestComplexity(requestComplexity);
     this.validateLogLevels(logLevels);
     this.validateDatabaseOptions(databaseOptions);
     this.validateCustomPages(customPages);
     this.validateAllowClientClassCreation(allowClientClassCreation);
+    this.validateLiveQueryOptions(liveQuery);
   }
 
   static validateCustomPages(customPages) {
@@ -154,17 +194,20 @@ export class Config {
     userController,
     appName,
     publicServerURL,
+    _publicServerURL,
     emailVerifyTokenValidityDuration,
     emailVerifyTokenReuseIfValid,
+    emailVerifySuccessOnInvalidEmail,
   }) {
     const emailAdapter = userController.adapter;
     if (verifyUserEmails) {
       this.validateEmailConfiguration({
         emailAdapter,
         appName,
-        publicServerURL,
+        publicServerURL: publicServerURL || _publicServerURL,
         emailVerifyTokenValidityDuration,
         emailVerifyTokenReuseIfValid,
+        emailVerifySuccessOnInvalidEmail,
       });
     }
   }
@@ -415,7 +458,7 @@ export class Config {
       }
 
       if (
-        passwordPolicy.resetPasswordSuccessOnInvalidEmail &&
+        passwordPolicy.resetPasswordSuccessOnInvalidEmail !== undefined &&
         typeof passwordPolicy.resetPasswordSuccessOnInvalidEmail !== 'boolean'
       ) {
         throw 'resetPasswordSuccessOnInvalidEmail must be a boolean value';
@@ -432,12 +475,37 @@ export class Config {
     }
   }
 
+  static validatePublicServerURL({ publicServerURL, required = false }) {
+    if (!publicServerURL) {
+      if (!required) {
+        return;
+      }
+      throw 'The option publicServerURL is required.';
+    }
+
+    const type = typeof publicServerURL;
+
+    if (type === 'string') {
+      if (!publicServerURL.startsWith('http://') && !publicServerURL.startsWith('https://')) {
+        throw 'The option publicServerURL must be a valid URL starting with http:// or https://.';
+      }
+      return;
+    }
+
+    if (type === 'function') {
+      return;
+    }
+
+    throw `The option publicServerURL must be a string or function, but got ${type}.`;
+  }
+
   static validateEmailConfiguration({
     emailAdapter,
     appName,
     publicServerURL,
     emailVerifyTokenValidityDuration,
     emailVerifyTokenReuseIfValid,
+    emailVerifySuccessOnInvalidEmail,
   }) {
     if (!emailAdapter) {
       throw 'An emailAdapter is required for e-mail verification and password resets.';
@@ -445,9 +513,7 @@ export class Config {
     if (typeof appName !== 'string') {
       throw 'An app name is required for e-mail verification and password resets.';
     }
-    if (typeof publicServerURL !== 'string') {
-      throw 'A public server url is required for e-mail verification and password resets.';
-    }
+    this.validatePublicServerURL({ publicServerURL, required: true });
     if (emailVerifyTokenValidityDuration) {
       if (isNaN(emailVerifyTokenValidityDuration)) {
         throw 'Email verify token validity duration must be a valid number.';
@@ -460,6 +526,9 @@ export class Config {
     }
     if (emailVerifyTokenReuseIfValid && !emailVerifyTokenValidityDuration) {
       throw 'You cannot use emailVerifyTokenReuseIfValid without emailVerifyTokenValidityDuration';
+    }
+    if (emailVerifySuccessOnInvalidEmail !== undefined && typeof emailVerifySuccessOnInvalidEmail !== 'boolean') {
+      throw 'emailVerifySuccessOnInvalidEmail must be a boolean value';
     }
   }
 
@@ -602,6 +671,22 @@ export class Config {
     } else if (typeof databaseOptions.schemaCacheTtl !== 'number') {
       throw `databaseOptions.schemaCacheTtl must be a number`;
     }
+    if (databaseOptions.allowPublicExplain === undefined) {
+      databaseOptions.allowPublicExplain = DatabaseOptions.allowPublicExplain.default;
+    } else if (typeof databaseOptions.allowPublicExplain !== 'boolean') {
+      throw `Parse Server option 'databaseOptions.allowPublicExplain' must be a boolean.`;
+    }
+  }
+
+  static validateLiveQueryOptions(liveQuery) {
+    if (liveQuery == undefined) {
+      return;
+    }
+    if (liveQuery.regexTimeout === undefined) {
+      liveQuery.regexTimeout = LiveQueryOptions.regexTimeout.default;
+    } else if (typeof liveQuery.regexTimeout !== 'number') {
+      throw `liveQuery.regexTimeout must be a number`;
+    }
   }
 
   static validateRateLimit(rateLimit) {
@@ -647,6 +732,31 @@ export class Config {
       if (option.zone && !options.includes(option.zone)) {
         const formatter = new Intl.ListFormat('en', { style: 'short', type: 'disjunction' });
         throw `rateLimit.zone must be one of ${formatter.format(options)}`;
+      }
+    }
+  }
+
+  static validateRequestComplexity(requestComplexity) {
+    if (requestComplexity == null) {
+      return;
+    }
+    if (typeof requestComplexity !== 'object' || Array.isArray(requestComplexity)) {
+      throw new Error('requestComplexity must be an object.');
+    }
+    const validKeys = Object.keys(RequestComplexityOptions);
+    for (const key of Object.keys(requestComplexity)) {
+      if (!validKeys.includes(key)) {
+        throw new Error(`requestComplexity contains unknown property '${key}'.`);
+      }
+    }
+    for (const key of validKeys) {
+      if (requestComplexity[key] !== undefined) {
+        const value = requestComplexity[key];
+        if (!Number.isInteger(value) || (value < 1 && value !== -1)) {
+          throw new Error(`requestComplexity.${key} must be a positive integer or -1 to disable.`);
+        }
+      } else {
+        requestComplexity[key] = RequestComplexityOptions[key].default;
       }
     }
   }
@@ -734,6 +844,27 @@ export class Config {
 
   get verifyEmailURL() {
     return `${this.publicServerURL}/${this.pagesEndpoint}/${this.applicationId}/verify_email`;
+  }
+
+  async loadMasterKey() {
+    if (typeof this.masterKey === 'function') {
+      const ttlIsEmpty = !this.masterKeyTtl;
+      const isExpired = this.masterKeyCache?.expiresAt && this.masterKeyCache.expiresAt < new Date();
+
+      if ((!isExpired || ttlIsEmpty) && this.masterKeyCache?.masterKey) {
+        return this.masterKeyCache.masterKey;
+      }
+
+      const masterKey = await this.masterKey();
+
+      const expiresAt = this.masterKeyTtl ? new Date(Date.now() + 1000 * this.masterKeyTtl) : null
+      this.masterKeyCache = { masterKey, expiresAt };
+      Config.put(this);
+
+      return this.masterKeyCache.masterKey;
+    }
+
+    return this.masterKey;
   }
 
   // TODO: Remove this function once PagesRouter replaces the PublicAPIRouter;

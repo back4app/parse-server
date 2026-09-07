@@ -1,9 +1,9 @@
 import Parse from 'parse/node';
-import deepcopy from 'deepcopy';
+
 import { GraphQLNonNull, GraphQLList } from 'graphql';
 import { transformToGraphQL } from '../transformers/schemaFields';
 import * as schemaTypes from './schemaTypes';
-import { enforceMasterKeyAccess } from '../parseGraphQLUtils';
+import { enforceMasterKeyAccess, cloneArgs } from '../parseGraphQLUtils';
 
 const getClass = async (name, schema) => {
   try {
@@ -28,10 +28,10 @@ const load = parseGraphQLSchema => {
       type: new GraphQLNonNull(schemaTypes.CLASS),
       resolve: async (_source, args, context) => {
         try {
-          const { name } = deepcopy(args);
+          const { name } = cloneArgs(args);
           const { config, auth } = context;
 
-          enforceMasterKeyAccess(auth);
+          enforceMasterKeyAccess(auth, config);
 
           const schema = await config.database.loadSchema({ clearCache: true });
           const parseClass = await getClass(name, schema);
@@ -57,7 +57,7 @@ const load = parseGraphQLSchema => {
         try {
           const { config, auth } = context;
 
-          enforceMasterKeyAccess(auth);
+          enforceMasterKeyAccess(auth, config);
 
           const schema = await config.database.loadSchema({ clearCache: true });
           return (await schema.getAllClasses(true)).map(parseClass => ({

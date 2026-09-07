@@ -1,10 +1,12 @@
 'use strict';
+const http = require('http');
 const Auth = require('../lib/Auth');
 const UserController = require('../lib/Controllers/UserController').UserController;
 const Config = require('../lib/Config');
 const ParseServer = require('../lib/index').ParseServer;
 const triggers = require('../lib/triggers');
-const { resolvingPromise, sleep } = require('../lib/TestUtils');
+const { resolvingPromise, sleep, getConnectionsCount } = require('../lib/TestUtils');
+const request = require('../lib/request');
 const validatorFail = () => {
   throw 'you are not authorized';
 };
@@ -644,6 +646,82 @@ describe('ParseLiveQuery', function () {
     );
   });
 
+  it('rejects subscription with invalid $regex pattern', async () => {
+    await reconfigureServer({
+      liveQuery: {
+        classNames: ['TestObject'],
+      },
+      startLiveQueryServer: true,
+      verbose: false,
+      silent: true,
+    });
+
+    const query = new Parse.Query('TestObject');
+    query._where = { foo: { $regex: '[invalid' } };
+    await expectAsync(query.subscribe()).toBeRejectedWithError(/Invalid regular expression/);
+  });
+
+  it('rejects subscription with non-string $regex value', async () => {
+    await reconfigureServer({
+      liveQuery: {
+        classNames: ['TestObject'],
+      },
+      startLiveQueryServer: true,
+      verbose: false,
+      silent: true,
+    });
+
+    const query = new Parse.Query('TestObject');
+    query._where = { foo: { $regex: 123 } };
+    await expectAsync(query.subscribe()).toBeRejectedWithError(
+      /\$regex must be a string or RegExp/
+    );
+  });
+
+  it('does not crash server when subscription matching throws and other subscriptions still work', async () => {
+    const server = await reconfigureServer({
+      liveQuery: {
+        classNames: ['TestObject'],
+      },
+      startLiveQueryServer: true,
+      verbose: false,
+      silent: true,
+    });
+
+    const object = new TestObject();
+    object.set('foo', 'bar');
+    await object.save();
+
+    // Create a valid subscription
+    const validQuery = new Parse.Query('TestObject');
+    validQuery.equalTo('objectId', object.id);
+    const validSubscription = await validQuery.subscribe();
+
+    // Inject a malformed subscription directly into the LiveQuery server
+    // to bypass subscribe-time validation and test the try-catch in _onAfterSave
+    const lqServer = server.liveQueryServer;
+    const Subscription = require('../lib/LiveQuery/Subscription').Subscription;
+    const badSubscription = new Subscription('TestObject', { foo: { $regex: '[invalid' } });
+    badSubscription.addClientSubscription('fakeClientId', 'fakeRequestId');
+    const classSubscriptions = lqServer.subscriptions.get('TestObject');
+    classSubscriptions.set('bad-hash', badSubscription);
+
+    // Verify the valid subscription still receives updates despite the bad subscription
+    const updatePromise = new Promise(resolve => {
+      validSubscription.on('update', obj => {
+        expect(obj.get('foo')).toBe('baz');
+        resolve();
+      });
+    });
+
+    object.set('foo', 'baz');
+    await object.save();
+    await updatePromise;
+
+    // Clean up the injected subscription
+    classSubscriptions.delete('bad-hash');
+  });
+
   it('can handle mutate beforeSubscribe query', async done => {
     await reconfigureServer({
       liveQuery: {
@@ -969,7 +1047,7 @@ describe('ParseLiveQuery', function () {
           const userController = new UserController(emailAdapter, 'test', {
             verifyUserEmails: true,
           });
-          userController.verifyEmail(foundUser.username, foundUser._email_verify_token);
+          userController.verifyEmail(foundUser._email_verify_token);
         });
     });
   });
@@ -1171,14 +1249,90 @@ describe('ParseLiveQuery', function () {
     const client = await Parse.CoreManager.getLiveQueryController().getDefaultLiveQueryClient();
     client.serverURL = 'ws://localhost:1345/1';
     const query = await new Parse.Query('Yolo').subscribe();
+    let liveQueryConnectionCount = await getConnectionsCount(server.liveQueryServer.server);
+    expect(liveQueryConnectionCount > 0).toBe(true);
     await Promise.all([
       server.handleShutdown(),
       new Promise(resolve => query.on('close', resolve)),
     ]);
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await sleep(100);
     expect(server.liveQueryServer.server.address()).toBeNull();
     expect(server.liveQueryServer.subscriber.isOpen).toBeFalse();
-    await new Promise(resolve => server.server.close(resolve));
+
+    liveQueryConnectionCount = await getConnectionsCount(server.liveQueryServer.server);
+    expect(liveQueryConnectionCount).toBe(0);
+  });
+
+  it_id('45655b74-716f-4fa1-a058-67eb21f3c3db')(it)('does shutdown separate liveQuery server', async () => {
+    await reconfigureServer({ appId: 'test_app_id' });
+    let close = false;
+    const config = {
+      appId: 'hello_test',
+      masterKey: 'world',
+      port: 1345,
+      mountPath: '/1',
+      serverURL: 'http://localhost:1345/1',
+      liveQuery: {
+        classNames: ['Yolo'],
+      },
+      startLiveQueryServer: true,
+      verbose: false,
+      silent: true,
+      liveQueryServerOptions: {
+        port: 1346,
+      },
+      serverCloseComplete: () => {
+        close = true;
+      },
+    };
+    if (process.env.PARSE_SERVER_TEST_DB === 'postgres') {
+      config.databaseAdapter = new databaseAdapter.constructor({
+        uri: databaseURI,
+        collectionPrefix: 'test_',
+      });
+      config.filesAdapter = defaultConfiguration.filesAdapter;
+    }
+    const parseServer = await ParseServer.startApp(config);
+    expect(parseServer.liveQueryServer).toBeDefined();
+    expect(parseServer.liveQueryServer.server).not.toBe(parseServer.server);
+
+    // Open a connection to the liveQuery server
+    const client = await Parse.CoreManager.getLiveQueryController().getDefaultLiveQueryClient();
+    client.serverURL = 'ws://localhost:1346/1';
+    const query = await new Parse.Query('Yolo').subscribe();
+
+    // Open a connection to the parse server
+    const health = await request({
+      method: 'GET',
+      url: `http://localhost:1345/1/health`,
+      json: true,
+      headers: {
+        'X-Parse-Application-Id': 'hello_test',
+        'X-Parse-Master-Key': 'world',
+        'Content-Type': 'application/json',
+      },
+      agent: new http.Agent({ keepAlive: true }),
+    }).then(res => res.data);
+    expect(health.status).toBe('ok');
+
+    let parseConnectionCount = await getConnectionsCount(parseServer.server);
+    let liveQueryConnectionCount = await getConnectionsCount(parseServer.liveQueryServer.server);
+
+    expect(parseConnectionCount > 0).toBe(true);
+    expect(liveQueryConnectionCount > 0).toBe(true);
+    await Promise.all([
+      parseServer.handleShutdown(),
+      new Promise(resolve => query.on('close', resolve)),
+    ]);
+    expect(close).toBe(true);
+    await sleep(100);
+    expect(parseServer.liveQueryServer.server.address()).toBeNull();
+    expect(parseServer.liveQueryServer.subscriber.isOpen).toBeFalse();
+
+    parseConnectionCount = await getConnectionsCount(parseServer.server);
+    liveQueryConnectionCount = await getConnectionsCount(parseServer.liveQueryServer.server);
+    expect(parseConnectionCount).toBe(0);
+    expect(liveQueryConnectionCount).toBe(0);
   });
 
   it('prevent afterSave trigger if not exists', async () => {
@@ -1229,5 +1383,279 @@ describe('ParseLiveQuery', function () {
 
     await new Promise(resolve => setTimeout(resolve, 100));
     expect(createSpy).toHaveBeenCalledTimes(1);
+  });
+
+  describe('class level permissions', () => {
+    async function setPermissionsOnClass(className, permissions, doPut) {
+      const method = doPut ? 'PUT' : 'POST';
+      const response = await fetch(Parse.serverURL + '/schemas/' + className, {
+        method,
+        headers: {
+          'X-Parse-Application-Id': Parse.applicationId,
+          'X-Parse-Master-Key': Parse.masterKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          classLevelPermissions: permissions,
+        }),
+      });
+      const body = await response.json();
+      if (body.error) {
+        throw body;
+      }
+      return body;
+    }
+
+    it('delivers LiveQuery event to authenticated client when CLP allows find', async () => {
+      await reconfigureServer({
+        liveQuery: {
+          classNames: ['SecureChat'],
+        },
+        startLiveQueryServer: true,
+        verbose: false,
+        silent: true,
+      });
+
+      const user = new Parse.User();
+      user.setUsername('admin');
+      user.setPassword('password');
+      await user.signUp();
+
+      await setPermissionsOnClass('SecureChat', {
+        create: { '*': true },
+        find: { [user.id]: true },
+      });
+
+      // Subscribe as the authorized user
+      const query = new Parse.Query('SecureChat');
+      const subscription = await query.subscribe(user.getSessionToken());
+
+      const spy = jasmine.createSpy('create');
+      subscription.on('create', spy);
+
+      const obj = new Parse.Object('SecureChat');
+      obj.set('secret', 'data');
+      await obj.save(null, { useMasterKey: true });
+
+      await sleep(500);
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects LiveQuery subscription when CLP denies find at subscription time', async () => {
+      await reconfigureServer({
+        liveQuery: {
+          classNames: ['SecureChat'],
+        },
+        startLiveQueryServer: true,
+        verbose: false,
+        silent: true,
+      });
+
+      const user = new Parse.User();
+      user.setUsername('admin');
+      user.setPassword('password');
+      await user.signUp();
+
+      await setPermissionsOnClass('SecureChat', {
+        create: { '*': true },
+        find: { [user.id]: true },
+      });
+
+      // Log out so subscription is unauthenticated
+      await Parse.User.logOut();
+
+      const query = new Parse.Query('SecureChat');
+      await expectAsync(query.subscribe()).toBeRejected();
+    });
+  });
+});
+
+describe('ParseLiveQuery ACL transition disclosure', function () {
+  const WebSocket = require('ws');
+
+  const waitFor = async predicate => {
+    const deadline = Date.now() + 6000;
+    while (Date.now() < deadline) {
+      if (predicate()) {
+        return;
+      }
+      await sleep(20);
+    }
+    throw new Error('timed out waiting for condition');
+  };
+
+  let sockets;
+
+  beforeEach(() => {
+    Parse.CoreManager.getLiveQueryController().setDefaultLiveQueryClient(null);
+    sockets = [];
+  });
+
+  afterEach(() => {
+    for (const socket of sockets) {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
+    }
+    sockets = [];
+  });
+
+  // Opens a raw LiveQuery WebSocket client authenticated with the given session
+  // token so the exact wire payload of each event can be asserted directly.
+  const openClient = async sessionToken => {
+    const socket = new WebSocket('ws://localhost:8378/1');
+    sockets.push(socket);
+    const messages = [];
+    socket.on('message', data => messages.push(JSON.parse(data.toString())));
+    await new Promise((resolve, reject) => {
+      socket.on('open', resolve);
+      socket.on('error', reject);
+    });
+    socket.send(
+      JSON.stringify({ op: 'connect', applicationId: Parse.applicationId, sessionToken })
+    );
+    const client = {
+      socket,
+      messages,
+      subscribe(requestId, className, where) {
+        socket.send(
+          JSON.stringify({ op: 'subscribe', requestId, query: { className, where }, sessionToken })
+        );
+      },
+      messagesForOp(op) {
+        return messages.filter(message => message.op === op);
+      },
+      waitForOpCount(op, count) {
+        return waitFor(() => this.messagesForOp(op).length >= count);
+      },
+    };
+    await waitFor(() => messages.some(message => message.op === 'connected'));
+    return client;
+  };
+
+  it('does not leak the post-revocation object body in a leave event when a save revokes the subscriber ACL read access', async () => {
+    await reconfigureServer({
+      liveQuery: { classNames: ['TestObject'] },
+      startLiveQueryServer: true,
+      verbose: false,
+      silent: true,
+    });
+
+    const user = new Parse.User();
+    user.setUsername('leave-acl-user');
+    user.setPassword('password');
+    await user.signUp();
+
+    // Object readable by the user, with an initial value.
+    const obj = new Parse.Object('TestObject');
+    const acl = new Parse.ACL();
+    acl.setPublicReadAccess(false);
+    acl.setReadAccess(user, true);
+    obj.setACL(acl);
+    obj.set('secretField', 'INITIAL');
+    await obj.save(null, { useMasterKey: true });
+
+    const client = await openClient(user.getSessionToken());
+    client.subscribe(1, 'TestObject', {});
+    await client.waitForOpCount('subscribed', 1);
+
+    // Control update: keep the user's ACL read access, only change the field. The
+    // user is still authorized and receives the new value via an update event.
+    await obj.save({ secretField: 'BENIGN_VISIBLE' }, { useMasterKey: true });
+    await client.waitForOpCount('update', 1);
+    expect(client.messagesForOp('update')[0].object.secretField).toBe('BENIGN_VISIBLE');
+
+    // Attack update: change the field AND remove the user's read access in the same save.
+    const revokedACL = new Parse.ACL();
+    revokedACL.setPublicReadAccess(false);
+    obj.setACL(revokedACL);
+    obj.set('secretField', 'POST_REVOCATION_SECRET');
+    await obj.save(null, { useMasterKey: true });
+    await client.waitForOpCount('leave', 1);
+
+    const leave = client.messagesForOp('leave')[0];
+    // The subscriber must not receive the post-revocation value they can no longer read.
+    expect(leave.object.secretField).not.toBe('POST_REVOCATION_SECRET');
+    // They receive the last value they were authorized to see.
+    expect(leave.object.secretField).toBe('BENIGN_VISIBLE');
+  });
+
+  it('does not leak the pre-grant original object body in an enter event when a save grants the subscriber ACL read access', async () => {
+    await reconfigureServer({
+      liveQuery: { classNames: ['TestObject'] },
+      startLiveQueryServer: true,
+      verbose: false,
+      silent: true,
+    });
+
+    const user = new Parse.User();
+    user.setUsername('enter-acl-user');
+    user.setPassword('password');
+    await user.signUp();
+
+    // Object NOT readable by the user, with a pre-grant value.
+    const obj = new Parse.Object('TestObject');
+    const noAccessACL = new Parse.ACL();
+    noAccessACL.setPublicReadAccess(false);
+    obj.setACL(noAccessACL);
+    obj.set('secretField', 'PRE_GRANT_SECRET');
+    await obj.save(null, { useMasterKey: true });
+
+    const client = await openClient(user.getSessionToken());
+    client.subscribe(1, 'TestObject', {});
+    await client.waitForOpCount('subscribed', 1);
+
+    // Grant update: change the field AND add the user's read access in the same save.
+    const grantedACL = new Parse.ACL();
+    grantedACL.setPublicReadAccess(false);
+    grantedACL.setReadAccess(user, true);
+    obj.setACL(grantedACL);
+    obj.set('secretField', 'GRANTED_VALUE');
+    await obj.save(null, { useMasterKey: true });
+    await client.waitForOpCount('enter', 1);
+
+    const enter = client.messagesForOp('enter')[0];
+    // The current (now-authorized) value is delivered.
+    expect(enter.object.secretField).toBe('GRANTED_VALUE');
+    // The pre-grant state the user was never authorized to read must not be delivered.
+    expect(enter.original).toBeUndefined();
+  });
+
+  it('still delivers the current object in a leave event caused by a query mismatch when the subscriber retains read access', async () => {
+    await reconfigureServer({
+      liveQuery: { classNames: ['TestObject'] },
+      startLiveQueryServer: true,
+      verbose: false,
+      silent: true,
+    });
+
+    const user = new Parse.User();
+    user.setUsername('leave-query-user');
+    user.setPassword('password');
+    await user.signUp();
+
+    // Object readable by the user that matches the subscription query.
+    const obj = new Parse.Object('TestObject');
+    const acl = new Parse.ACL();
+    acl.setPublicReadAccess(false);
+    acl.setReadAccess(user, true);
+    obj.setACL(acl);
+    obj.set('status', 'active');
+    obj.set('secretField', 'INITIAL');
+    await obj.save(null, { useMasterKey: true });
+
+    const client = await openClient(user.getSessionToken());
+    client.subscribe(1, 'TestObject', { status: 'active' });
+    await client.waitForOpCount('subscribed', 1);
+
+    // Update the field so the object no longer matches the query (query-mismatch leave)
+    // while preserving the user's ACL read access. The user is still authorized to read
+    // the current object, so the current state is delivered as designed.
+    await obj.save({ status: 'archived', secretField: 'VISIBLE_NEW' }, { useMasterKey: true });
+    await client.waitForOpCount('leave', 1);
+
+    const leave = client.messagesForOp('leave')[0];
+    expect(leave.object.status).toBe('archived');
+    expect(leave.object.secretField).toBe('VISIBLE_NEW');
   });
 });

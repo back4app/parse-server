@@ -8,8 +8,6 @@ import { Parse } from 'parse/node';
 import _ from 'lodash';
 // @flow-disable-next
 import intersect from 'intersect';
-// @flow-disable-next
-import deepcopy from 'deepcopy';
 import logger from '../logger';
 import Utils from '../Utils';
 import * as SchemaController from './SchemaController';
@@ -20,6 +18,7 @@ import SchemaCache from '../Adapters/Cache/SchemaCache';
 import type { LoadSchemaOptions } from './types';
 import type { ParseServerOptions } from '../Options';
 import type { QueryOptions, FullQueryOptions } from '../Adapters/Storage/StorageAdapter';
+import { createSanitizedError } from '../Error';
 
 function addWriteACL(query, acl) {
   const newQuery = _.cloneDeep(query);
@@ -60,22 +59,33 @@ const specialMasterQueryKeys = [
   ...specialQueryKeys,
   '_email_verify_token',
   '_perishable_token',
+  '_perishable_token_expires_at',
   '_tombstone',
   '_email_verify_token_expires_at',
   '_failed_login_count',
   '_account_lockout_expires_at',
   '_password_changed_at',
   '_password_history',
+  '_session_token',
 ];
 
 const validateQuery = (
   query: any,
   isMaster: boolean,
   isMaintenance: boolean,
-  update: boolean
+  update: boolean,
+  options: ?ParseServerOptions,
+  _depth: number = 0
 ): void => {
   if (isMaintenance) {
     isMaster = true;
+  }
+  const rc = options?.requestComplexity;
+  if (!isMaster && rc && rc.queryDepth !== -1 && _depth > rc.queryDepth) {
+    throw new Parse.Error(
+      Parse.Error.INVALID_QUERY,
+      `Query condition nesting depth exceeds maximum allowed depth of ${rc.queryDepth}`
+    );
   }
   if (query.ACL) {
     throw new Parse.Error(Parse.Error.INVALID_QUERY, 'Cannot query on ACL.');
@@ -83,7 +93,7 @@ const validateQuery = (
 
   if (query.$or) {
     if (query.$or instanceof Array) {
-      query.$or.forEach(value => validateQuery(value, isMaster, isMaintenance, update));
+      query.$or.forEach(value => validateQuery(value, isMaster, isMaintenance, update, options, _depth + 1));
     } else {
       throw new Parse.Error(Parse.Error.INVALID_QUERY, 'Bad $or format - use an array value.');
     }
@@ -91,7 +101,7 @@ const validateQuery = (
 
   if (query.$and) {
     if (query.$and instanceof Array) {
-      query.$and.forEach(value => validateQuery(value, isMaster, isMaintenance, update));
+      query.$and.forEach(value => validateQuery(value, isMaster, isMaintenance, update, options, _depth + 1));
     } else {
       throw new Parse.Error(Parse.Error.INVALID_QUERY, 'Bad $and format - use an array value.');
     }
@@ -99,7 +109,7 @@ const validateQuery = (
 
   if (query.$nor) {
     if (query.$nor instanceof Array && query.$nor.length > 0) {
-      query.$nor.forEach(value => validateQuery(value, isMaster, isMaintenance, update));
+      query.$nor.forEach(value => validateQuery(value, isMaster, isMaintenance, update, options, _depth + 1));
     } else {
       throw new Parse.Error(
         Parse.Error.INVALID_QUERY,
@@ -111,7 +121,7 @@ const validateQuery = (
   Object.keys(query).forEach(key => {
     if (query && query[key] && query[key].$regex) {
       if (typeof query[key].$options === 'string') {
-        if (!query[key].$options.match(/^[imxs]+$/)) {
+        if (!query[key].$options.match(/^[imxsu]+$/)) {
           throw new Parse.Error(
             Parse.Error.INVALID_QUERY,
             `Bad $options value for query: ${query[key].$options}`
@@ -121,8 +131,8 @@ const validateQuery = (
     }
     if (
       !key.match(/^[a-zA-Z][a-zA-Z0-9_\.]*$/) &&
-      ((!specialQueryKeys.includes(key) && !isMaster && !update) ||
-        (update && isMaster && !specialMasterQueryKeys.includes(key)))
+      !specialQueryKeys.includes(key) &&
+      !(isMaster && specialMasterQueryKeys.includes(key))
     ) {
       throw new Parse.Error(Parse.Error.INVALID_KEY_NAME, `Invalid key name: ${key}`);
     }
@@ -502,7 +512,7 @@ class DatabaseController {
     const originalQuery = query;
     const originalUpdate = update;
     // Make a copy of the object, so we don't mutate the incoming data.
-    update = deepcopy(update);
+    update = structuredClone(update);
     var relationUpdates = [];
     var isMaster = acl === undefined;
     var aclGroup = acl || [];
@@ -544,7 +554,7 @@ class DatabaseController {
           if (acl) {
             query = addWriteACL(query, acl);
           }
-          validateQuery(query, isMaster, false, true);
+          validateQuery(query, isMaster, false, true, this.options);
           return schemaController
             .getOneSchema(className, true)
             .catch(error => {
@@ -593,7 +603,7 @@ class DatabaseController {
               convertUsernameToLowercase(update, className, this.options);
               transformAuthData(className, update, schema);
               if (validateOnly) {
-                return this.adapter.find(className, schema, query, {}).then(result => {
+                return this.adapter.find(className, schema, query, { readPreference: 'primary' }).then(result => {
                   if (!result || !result.length) {
                     throw new Parse.Error(Parse.Error.OBJECT_NOT_FOUND, 'Object not found.');
                   }
@@ -792,7 +802,7 @@ class DatabaseController {
         if (acl) {
           query = addWriteACL(query, acl);
         }
-        validateQuery(query, isMaster, false, false);
+        validateQuery(query, isMaster, false, false, this.options);
         return schemaController
           .getOneSchema(className)
           .catch(error => {
@@ -1064,36 +1074,167 @@ class DatabaseController {
 
   // Modifies query so that it no longer has $relatedTo
   // Returns a promise that resolves when query is mutated
-  reduceRelationKeys(className: string, query: any, queryOptions: any): ?Promise<void> {
+  reduceRelationKeys(
+    className: string,
+    query: any,
+    queryOptions: any,
+    auth: any = {},
+    aclGroup: any[] = [],
+    isMaster: boolean = false,
+    schemaController: ?SchemaController.SchemaController
+  ): ?Promise<void> {
     if (query['$or']) {
       return Promise.all(
         query['$or'].map(aQuery => {
-          return this.reduceRelationKeys(className, aQuery, queryOptions);
+          return this.reduceRelationKeys(
+            className,
+            aQuery,
+            queryOptions,
+            auth,
+            aclGroup,
+            isMaster,
+            schemaController
+          );
         })
       );
     }
     if (query['$and']) {
       return Promise.all(
         query['$and'].map(aQuery => {
-          return this.reduceRelationKeys(className, aQuery, queryOptions);
+          return this.reduceRelationKeys(
+            className,
+            aQuery,
+            queryOptions,
+            auth,
+            aclGroup,
+            isMaster,
+            schemaController
+          );
+        })
+      );
+    }
+    if (Array.isArray(query['$nor'])) {
+      // Guard with Array.isArray (unlike the legacy $or/$and checks above) so a
+      // malformed non-array $nor still falls through to validateQuery and yields
+      // the existing INVALID_QUERY error instead of throwing here.
+      return Promise.all(
+        query['$nor'].map(aQuery => {
+          return this.reduceRelationKeys(
+            className,
+            aQuery,
+            queryOptions,
+            auth,
+            aclGroup,
+            isMaster,
+            schemaController
+          );
         })
       );
     }
     var relatedTo = query['$relatedTo'];
     if (relatedTo) {
-      return this.relatedIds(
-        relatedTo.object.className,
-        relatedTo.key,
-        relatedTo.object.objectId,
-        queryOptions
-      )
-        .then(ids => {
+      return this.authorizeRelatedToQuery(relatedTo, auth, aclGroup, isMaster, schemaController)
+        .then(canReadOwningObject => {
           delete query['$relatedTo'];
-          this.addInObjectIdsIds(ids, query);
-          return this.reduceRelationKeys(className, query, queryOptions);
+          if (!canReadOwningObject) {
+            // The caller is not allowed to read the owning object, so the
+            // relation must not disclose any linked objects (and must not act
+            // as a membership oracle for a known related id).
+            this.addInObjectIdsIds([], query);
+            return this.reduceRelationKeys(
+              className,
+              query,
+              queryOptions,
+              auth,
+              aclGroup,
+              isMaster,
+              schemaController
+            );
+          }
+          return this.relatedIds(
+            relatedTo.object.className,
+            relatedTo.key,
+            relatedTo.object.objectId,
+            queryOptions
+          ).then(ids => {
+            this.addInObjectIdsIds(ids, query);
+            return this.reduceRelationKeys(
+              className,
+              query,
+              queryOptions,
+              auth,
+              aclGroup,
+              isMaster,
+              schemaController
+            );
+          });
         })
         .then(() => {});
     }
+  }
+
+  // Authorizes a `$relatedTo` relation query against the owning object before
+  // its join table is read by `relatedIds`. Without this check, `$relatedTo`
+  // bypasses both `protectedFields` and the owning object's ACL/CLP, because
+  // the downstream protected-field and ACL filters only apply to the queried
+  // (target) class, never to the owning class referenced by `$relatedTo`.
+  //
+  // - Throws `OPERATION_FORBIDDEN` if the relation key is a protected field on
+  //   the owning class for the caller's auth context (mirrors the protected
+  //   WHERE-field denial in `RestQuery.denyProtectedFields`).
+  // - Resolves to `true` if the caller may read the owning object (so the join
+  //   table read may proceed), or `false` otherwise (so the relation yields no
+  //   results and cannot be used as a membership oracle).
+  //
+  // Master and maintenance requests bypass both checks by design.
+  authorizeRelatedToQuery(
+    relatedTo: any,
+    auth: any = {},
+    aclGroup: any[] = [],
+    isMaster: boolean = false,
+    schemaController: ?SchemaController.SchemaController
+  ): Promise<boolean> {
+    if (isMaster) {
+      return Promise.resolve(true);
+    }
+    const owningClassName = relatedTo && relatedTo.object && relatedTo.object.className;
+    const owningId = relatedTo && relatedTo.object && relatedTo.object.objectId;
+    const relationKey = relatedTo && relatedTo.key;
+    return this.loadSchemaIfNeeded(schemaController).then(loadedSchema => {
+      // 1. The relation key must not be a protected field on the owning class.
+      const protectedFields =
+        this.addProtectedFields(loadedSchema, owningClassName, {}, aclGroup, auth) || [];
+      const rootField = typeof relationKey === 'string' ? relationKey.split('.')[0] : relationKey;
+      if (protectedFields.includes(relationKey) || protectedFields.includes(rootField)) {
+        throw createSanitizedError(
+          Parse.Error.OPERATION_FORBIDDEN,
+          `This user is not allowed to query ${relationKey} on class ${owningClassName}`,
+          this.options
+        );
+      }
+      // 2. The caller must be able to read the owning object itself. A read with
+      //    the caller's auth context applies the owning class CLP, the object
+      //    ACL and pointer permissions. Any "not authorized" or "not found"
+      //    outcome maps to "cannot read", so the relation returns no results.
+      return this.find(
+        owningClassName,
+        { objectId: owningId },
+        { acl: aclGroup, limit: 1, keys: ['objectId'], op: 'get' },
+        auth,
+        loadedSchema
+      )
+        .then(results => Array.isArray(results) && results.length > 0)
+        .catch(error => {
+          if (
+            error instanceof Parse.Error &&
+            (error.code === Parse.Error.OPERATION_FORBIDDEN ||
+              error.code === Parse.Error.OBJECT_NOT_FOUND)
+          ) {
+            return false;
+          }
+          throw error;
+        });
+    });
   }
 
   addInObjectIdsIds(ids: ?Array<string> = null, query: any) {
@@ -1259,7 +1400,17 @@ class DatabaseController {
             ? Promise.resolve()
             : schemaController.validatePermission(className, aclGroup, op)
           )
-            .then(() => this.reduceRelationKeys(className, query, queryOptions))
+            .then(() =>
+              this.reduceRelationKeys(
+                className,
+                query,
+                queryOptions,
+                auth,
+                aclGroup,
+                isMaster,
+                schemaController
+              )
+            )
             .then(() => this.reduceInRelation(className, query, schemaController))
             .then(() => {
               let protectedFields;
@@ -1297,7 +1448,7 @@ class DatabaseController {
                   query = addReadACL(query, aclGroup);
                 }
               }
-              validateQuery(query, isMaster, isMaintenance, false);
+              validateQuery(query, isMaster, isMaintenance, false, this.options);
               if (count) {
                 if (!classExists) {
                   return 0;
@@ -1354,7 +1505,19 @@ class DatabaseController {
                     })
                   )
                   .catch(error => {
-                    throw new Parse.Error(Parse.Error.INTERNAL_SERVER_ERROR, error);
+                    if (error instanceof Parse.Error) {
+                      throw error;
+                    }
+                    const detailedMessage =
+                      typeof error === 'string'
+                        ? error
+                        : error?.message || 'An internal server error occurred';
+                    throw createSanitizedError(
+                      Parse.Error.INTERNAL_SERVER_ERROR,
+                      detailedMessage,
+                      this.options,
+                      'An internal server error occurred'
+                    );
                   });
               }
             });
@@ -1738,36 +1901,66 @@ class DatabaseController {
     await this.loadSchema().then(schema => schema.enforceClassExists('_Role'));
     await this.loadSchema().then(schema => schema.enforceClassExists('_Idempotency'));
 
-    await this.adapter.ensureUniqueness('_User', requiredUserFields, ['username']).catch(error => {
-      logger.warn('Unable to ensure uniqueness for usernames: ', error);
-      throw error;
-    });
+    const databaseOptions = this.options.databaseOptions || {};
+
+    if (databaseOptions.createIndexUserUsername !== false) {
+      await this.adapter.ensureUniqueness('_User', requiredUserFields, ['username']).catch(error => {
+        logger.warn('Unable to ensure uniqueness for usernames: ', error);
+        throw error;
+      });
+    }
 
     if (!this.options.enableCollationCaseComparison) {
-      await this.adapter
-        .ensureIndex('_User', requiredUserFields, ['username'], 'case_insensitive_username', true)
-        .catch(error => {
-          logger.warn('Unable to create case insensitive username index: ', error);
-          throw error;
-        });
+      if (databaseOptions.createIndexUserUsernameCaseInsensitive !== false) {
+        await this.adapter
+          .ensureIndex('_User', requiredUserFields, ['username'], 'case_insensitive_username', true)
+          .catch(error => {
+            logger.warn('Unable to create case insensitive username index: ', error);
+            throw error;
+          });
+      }
 
+      if (databaseOptions.createIndexUserEmailCaseInsensitive !== false) {
+        await this.adapter
+          .ensureIndex('_User', requiredUserFields, ['email'], 'case_insensitive_email', true)
+          .catch(error => {
+            logger.warn('Unable to create case insensitive email index: ', error);
+            throw error;
+          });
+      }
+    }
+
+    if (databaseOptions.createIndexUserEmail !== false) {
+      await this.adapter.ensureUniqueness('_User', requiredUserFields, ['email']).catch(error => {
+        logger.warn('Unable to ensure uniqueness for user email addresses: ', error);
+        throw error;
+      });
+    }
+
+    if (databaseOptions.createIndexUserEmailVerifyToken !== false) {
       await this.adapter
-        .ensureIndex('_User', requiredUserFields, ['email'], 'case_insensitive_email', true)
+        .ensureIndex('_User', requiredUserFields, ['_email_verify_token'], '_email_verify_token', false)
         .catch(error => {
-          logger.warn('Unable to create case insensitive email index: ', error);
+          logger.warn('Unable to create index for email verification token: ', error);
           throw error;
         });
     }
 
-    await this.adapter.ensureUniqueness('_User', requiredUserFields, ['email']).catch(error => {
-      logger.warn('Unable to ensure uniqueness for user email addresses: ', error);
-      throw error;
-    });
+    if (databaseOptions.createIndexUserPasswordResetToken !== false) {
+      await this.adapter
+        .ensureIndex('_User', requiredUserFields, ['_perishable_token'], '_perishable_token', false)
+        .catch(error => {
+          logger.warn('Unable to create index for password reset token: ', error);
+          throw error;
+        });
+    }
 
-    await this.adapter.ensureUniqueness('_Role', requiredRoleFields, ['name']).catch(error => {
-      logger.warn('Unable to ensure uniqueness for role name: ', error);
-      throw error;
-    });
+    if (databaseOptions.createIndexRoleName !== false) {
+      await this.adapter.ensureUniqueness('_Role', requiredRoleFields, ['name']).catch(error => {
+        logger.warn('Unable to ensure uniqueness for role name: ', error);
+        throw error;
+      });
+    }
 
     await this.adapter
       .ensureUniqueness('_Idempotency', requiredIdempotencyFields, ['reqId'])
@@ -1795,6 +1988,30 @@ class DatabaseController {
           throw error;
         });
     }
+    // Create unique indexes for authData providers to prevent race conditions
+    // during concurrent signups with the same authData
+    if (
+      databaseOptions.createIndexAuthDataUniqueness !== false &&
+      typeof this.adapter.ensureAuthDataUniqueness === 'function'
+    ) {
+      const authProviders = Object.keys(this.options.auth || {});
+      if (this.options.enableAnonymousUsers !== false) {
+        if (!authProviders.includes('anonymous')) {
+          authProviders.push('anonymous');
+        }
+      }
+      await Promise.all(
+        authProviders.map(provider =>
+          this.adapter.ensureAuthDataUniqueness(provider).catch(error => {
+            logger.warn(
+              `Unable to ensure uniqueness for auth data provider "${provider}": `,
+              error
+            );
+          })
+        )
+      );
+    }
+
     await this.adapter.updateSchemaWithIndexes();
   }
 

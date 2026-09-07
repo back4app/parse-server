@@ -6,7 +6,7 @@ const request = require('../lib/request');
 const Parse = require('parse/node');
 const Config = require('../lib/Config');
 const SchemaController = require('../lib/Controllers/SchemaController');
-const TestUtils = require('../lib/TestUtils');
+const { destroyAllDataPermanently } = require('../lib/TestUtils');
 
 const userSchema = SchemaController.convertSchemaToAdapterSchema({
   className: '_User',
@@ -33,9 +33,7 @@ describe('miscellaneous', () => {
     expect(results.length).toEqual(1);
     expect(results[0]['foo']).toEqual('bar');
   });
-});
 
-describe('miscellaneous', function () {
   it('create a GameScore object', function (done) {
     const obj = new Parse.Object('GameScore');
     obj.set('score', 1337);
@@ -171,7 +169,7 @@ describe('miscellaneous', function () {
     }
     const config = Config.get('test');
     // Remove existing data to clear out unique index
-    TestUtils.destroyAllDataPermanently()
+    destroyAllDataPermanently()
       .then(() => config.database.adapter.performInitialization({ VolatileClassesSchemas: [] }))
       .then(() => config.database.adapter.createClass('_User', userSchema))
       .then(() =>
@@ -212,7 +210,7 @@ describe('miscellaneous', function () {
   it_id('d00f907e-41b9-40f6-8168-63e832199a8c')(it)('ensure that if people already have duplicate emails, they can still sign up new users', done => {
     const config = Config.get('test');
     // Remove existing data to clear out unique index
-    TestUtils.destroyAllDataPermanently()
+    destroyAllDataPermanently()
       .then(() => config.database.adapter.performInitialization({ VolatileClassesSchemas: [] }))
       .then(() => config.database.adapter.createClass('_User', userSchema))
       .then(() =>
@@ -1712,11 +1710,15 @@ describe('miscellaneous', function () {
   });
 
   it('fail on purge all objects in class without master key', done => {
+    const logger = require('../lib/logger').default;
+    const loggerErrorSpy = spyOn(logger, 'error').and.callThrough();
+
     const headers = {
       'Content-Type': 'application/json',
       'X-Parse-Application-Id': 'test',
       'X-Parse-REST-API-Key': 'rest',
     };
+    loggerErrorSpy.calls.reset();
     request({
       method: 'DELETE',
       headers: headers,
@@ -1726,7 +1728,8 @@ describe('miscellaneous', function () {
         fail('Should not succeed');
       })
       .catch(response => {
-        expect(response.data.error).toEqual('unauthorized: master key is required');
+        expect(response.data.error).toEqual('Permission denied');
+        expect(loggerErrorSpy).toHaveBeenCalledWith('Sanitized error:', jasmine.stringContaining('unauthorized: master key is required'));
         done();
       });
   });

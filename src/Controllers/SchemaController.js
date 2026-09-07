@@ -20,8 +20,7 @@ import { StorageAdapter } from '../Adapters/Storage/StorageAdapter';
 import SchemaCache from '../Adapters/Cache/SchemaCache';
 import DatabaseController from './DatabaseController';
 import Config from '../Config';
-// @flow-disable-next
-import deepcopy from 'deepcopy';
+import { createSanitizedError } from '../Error';
 import type {
   Schema,
   SchemaFields,
@@ -263,6 +262,7 @@ function validateProtectedFieldsKey(key, userIdRegExp) {
 }
 
 const CLPValidKeys = Object.freeze([
+  'ACL',
   'find',
   'count',
   'get',
@@ -372,13 +372,34 @@ function validateCLP(perms: ClassLevelPermissions, fields: SchemaFields, userIdR
         continue;
       }
 
-      // or [entity]: boolean
       const permit = operation[entity];
 
-      if (permit !== true) {
+      if (operationKey === 'ACL') {
+        if (Object.prototype.toString.call(permit) !== '[object Object]') {
+          throw new Parse.Error(
+            Parse.Error.INVALID_JSON,
+            `'${permit}' is not a valid value for class level permissions acl`
+          );
+        }
+        const invalidKeys = Object.keys(permit).filter(key => !['read', 'write'].includes(key));
+        const invalidValues = Object.values(permit).filter(key => typeof key !== 'boolean');
+        if (invalidKeys.length) {
+          throw new Parse.Error(
+            Parse.Error.INVALID_JSON,
+            `'${invalidKeys.join(',')}' is not a valid key for class level permissions acl`
+          );
+        }
+
+        if (invalidValues.length) {
+          throw new Parse.Error(
+            Parse.Error.INVALID_JSON,
+            `'${invalidValues.join(',')}' is not a valid value for class level permissions acl`
+          );
+        }
+      } else if (permit !== true) {
         throw new Parse.Error(
           Parse.Error.INVALID_JSON,
-          `'${permit}' is not a valid value for class level permissions ${operationKey}:${entity}:${permit}`
+          `'${permit}' is not a valid value for class level permissions acl ${operationKey}:${entity}`
         );
       }
     }
@@ -558,7 +579,7 @@ class SchemaData {
           if (!this.__data[schema.className]) {
             const data = {};
             data.fields = injectDefaultSchema(schema).fields;
-            data.classLevelPermissions = deepcopy(schema.classLevelPermissions);
+            data.classLevelPermissions = structuredClone(schema.classLevelPermissions);
             data.indexes = schema.indexes;
 
             const classProtectedFields = this.__protectedFields[schema.className];
@@ -1384,19 +1405,22 @@ export default class SchemaController {
       return true;
     }
     const perms = classPermissions[operation];
+    const config = Config.get(Parse.applicationId)
     // If only for authenticated users
     // make sure we have an aclGroup
     if (perms['requiresAuthentication']) {
       // If aclGroup has * (public)
       if (!aclGroup || aclGroup.length == 0) {
-        throw new Parse.Error(
+        throw createSanitizedError(
           Parse.Error.OBJECT_NOT_FOUND,
-          'Permission denied, user needs to be authenticated.'
+          'Permission denied, user needs to be authenticated.',
+          config
         );
       } else if (aclGroup.indexOf('*') > -1 && aclGroup.length == 1) {
-        throw new Parse.Error(
+        throw createSanitizedError(
           Parse.Error.OBJECT_NOT_FOUND,
-          'Permission denied, user needs to be authenticated.'
+          'Permission denied, user needs to be authenticated.',
+          config
         );
       }
       // requiresAuthentication passed, just move forward
@@ -1411,9 +1435,10 @@ export default class SchemaController {
 
     // Reject create when write lockdown
     if (permissionField == 'writeUserFields' && operation == 'create') {
-      throw new Parse.Error(
+      throw createSanitizedError(
         Parse.Error.OPERATION_FORBIDDEN,
-        `Permission denied for action ${operation} on class ${className}.`
+        `Permission denied for action ${operation} on class ${className}.`,
+        config
       );
     }
 
@@ -1434,9 +1459,10 @@ export default class SchemaController {
       }
     }
 
-    throw new Parse.Error(
+    throw createSanitizedError(
       Parse.Error.OPERATION_FORBIDDEN,
-      `Permission denied for action ${operation} on class ${className}.`
+      `Permission denied for action ${operation} on class ${className}.`,
+      config
     );
   }
 

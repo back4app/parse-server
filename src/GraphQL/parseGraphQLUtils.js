@@ -1,9 +1,14 @@
 import Parse from 'parse/node';
 import { GraphQLError } from 'graphql';
+import { createSanitizedError } from '../Error';
 
-export function enforceMasterKeyAccess(auth) {
+export function enforceMasterKeyAccess(auth, config) {
   if (!auth.isMaster) {
-    throw new Parse.Error(Parse.Error.OPERATION_FORBIDDEN, 'unauthorized: master key is required');
+    throw createSanitizedError(
+      Parse.Error.OPERATION_FORBIDDEN,
+      'unauthorized: master key is required',
+      config
+    );
   }
 }
 
@@ -50,3 +55,11 @@ export const extractKeysAndInclude = selectedFields => {
 export const getParseClassMutationConfig = function (parseClassConfig) {
   return (parseClassConfig && parseClassConfig.mutation) || {};
 };
+
+export function cloneArgs(args) {
+  try {
+    return structuredClone(args);
+  } catch {
+    return JSON.parse(JSON.stringify(args));
+  }
+}

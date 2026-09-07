@@ -4,6 +4,7 @@
  * @property {Function} beforeMigration Execute a callback before running schema migrations.
  * @property {Any} definitions Rest representation on Parse.Schema https://docs.parseplatform.org/rest/guide/#adding-a-schema
  * @property {Boolean} deleteExtraFields Is true if Parse Server should delete any fields not defined in a schema definition. This should only be used during development.
+ * @property {Boolean} keepUnknownIndexes (Optional) Keep indexes that are present in the database but not defined in the schema. Set this to `true` if you are adding indexes manually, so that they won't be removed when running schema migration. Default is `false`.
  * @property {Boolean} lockSchemas Is true if Parse Server will reject any attempts to modify the schema while the server is running.
  * @property {Boolean} recreateModifiedFields Is true if Parse Server should recreate any fields that are different between the current database schema and theschema definition. This should only be used during development.
  * @property {Boolean} strict Is true if Parse Server should exit if schema update fail.
@@ -14,13 +15,13 @@
  * @property {AccountLockoutOptions} accountLockout The account lockout policy for failed login attempts.
  * @property {Boolean} allowClientClassCreation Enable (or disable) client class creation, defaults to false
  * @property {Boolean} allowCustomObjectId Enable (or disable) custom objectId
- * @property {Boolean} allowExpiredAuthDataToken Allow a user to log in even if the 3rd party authentication token that was used to sign in to their account has expired. If this is set to `false`, then the token will be validated every time the user signs in to their account. This refers to the token that is stored in the `_User.authData` field. Defaults to `false`.
+ * @property {Boolean} allowExpiredAuthDataToken Deprecated. This option will be removed in a future version. Auth providers are always validated on login. On update, if this is set to `true`, auth providers are only re-validated when the auth data has changed. If this is set to `false`, auth providers are re-validated on every update. Defaults to `false`.
  * @property {String[]} allowHeaders Add headers to Access-Control-Allow-Headers
  * @property {String|String[]} allowOrigin Sets origins for Access-Control-Allow-Origin. This can be a string for a single origin or an array of strings for multiple origins.
  * @property {Adapter<AnalyticsAdapter>} analyticsAdapter Adapter module for the analytics
  * @property {String} appId Your Parse Application ID
  * @property {String} appName Sets the app name
- * @property {Object} auth Configuration for your authentication providers, as stringified JSON. See http://docs.parseplatform.org/parse-server/guide/#oauth-and-3rd-party-authentication
+ * @property {Object} auth Configuration for your authentication providers, as stringified JSON. See http://docs.parseplatform.org/parse-server/guide/#oauth-and-3rd-party-authentication<br><br>Provider names must start with a letter and contain only letters, digits, and underscores (`/^[A-Za-z][A-Za-z0-9_]*$/`). This is because each provider name is used to construct a database field (`_auth_data_<provider>`), which must comply with Parse Server's field naming rules.
  * @property {Adapter<CacheAdapter>} cacheAdapter Adapter module for the cache
  * @property {Number} cacheMaxSize Sets the maximum size for the in memory cache, defaults to 10000
  * @property {Number} cacheTTL Sets the TTL for the in memory cache (in ms), defaults to 5000 (5 seconds)
@@ -38,12 +39,14 @@
  * @property {Boolean} directAccess Set to `true` if Parse requests within the same Node.js environment as Parse Server should be routed to Parse Server directly instead of via the HTTP interface. Default is `false`.<br><br>If set to `false` then Parse requests within the same Node.js environment as Parse Server are executed as HTTP requests sent to Parse Server via the `serverURL`. For example, a `Parse.Query` in Cloud Code is calling Parse Server via a HTTP request. The server is essentially making a HTTP request to itself, unnecessarily using network resources such as network ports.<br><br>⚠️ In environments where multiple Parse Server instances run behind a load balancer and Parse requests within the current Node.js environment should be routed via the load balancer and distributed as HTTP requests among all instances via the `serverURL`, this should be set to `false`.
  * @property {String} dotNetKey Key for Unity and .Net SDK
  * @property {Adapter<MailAdapter>} emailAdapter Adapter module for email sending
+ * @property {Boolean} emailVerifySuccessOnInvalidEmail Set to `true` if a request to verify the email should return a success response even if the provided email address does not belong to a verifiable account, for example because it is unknown or already verified, or `false` if the request should return an error response in those cases.<br><br>Default is `true`.<br>Requires option `verifyUserEmails: true`.
  * @property {Boolean} emailVerifyTokenReuseIfValid Set to `true` if a email verification token should be reused in case another token is requested but there is a token that is still valid, i.e. has not expired. This avoids the often observed issue that a user requests multiple emails and does not know which link contains a valid token because each newly generated token would invalidate the previous token.<br><br>Default is `false`.<br>Requires option `verifyUserEmails: true`.
  * @property {Number} emailVerifyTokenValidityDuration Set the validity duration of the email verification token in seconds after which the token expires. The token is used in the link that is set in the email. After the token expires, the link becomes invalid and a new link has to be sent. If the option is not set or set to `undefined`, then the token never expires.<br><br>For example, to expire the token after 2 hours, set a value of 7200 seconds (= 60 seconds * 60 minutes * 2 hours).<br><br>Default is `undefined`.<br>Requires option `verifyUserEmails: true`.
  * @property {Boolean} enableAnonymousUsers Enable (or disable) anonymous users, defaults to true
  * @property {Boolean} enableCollationCaseComparison Optional. If set to `true`, the collation rule of case comparison for queries and indexes is enabled. Enable this option to run Parse Server with MongoDB Atlas Serverless or AWS Amazon DocumentDB. If `false`, the collation rule of case comparison is disabled. Default is `false`.
  * @property {Boolean} enableExpressErrorHandler Enables the default express error handler for all errors
  * @property {Boolean} enableInsecureAuthAdapters Enable (or disable) insecure auth adapters, defaults to true. Insecure auth adapters are deprecated and it is recommended to disable them.
+ * @property {Boolean} enableSanitizedErrorResponse If set to `true`, error details are removed from error messages in responses to client requests, and instead a generic error message is sent. Default is `true`.
  * @property {Boolean} encodeParseObjectInCloudFunction If set to `true`, a `Parse.Object` that is in the payload when calling a Cloud Function will be converted to an instance of `Parse.Object`. If `false`, the object will not be converted and instead be a plain JavaScript object, which contains the raw data of a `Parse.Object` but is not an actual instance of `Parse.Object`. Default is `false`. <br><br>ℹ️ The expected behavior would be that the object is converted to an instance of `Parse.Object`, so you would normally set this option to `true`. The default is `false` because this is a temporary option that has been introduced to avoid a breaking change when fixing a bug where JavaScript objects are not converted to actual instances of `Parse.Object`.
  * @property {String} encryptionKey Key for encrypting your files
  * @property {Boolean} enforcePrivateUsers Set to true if new users should be created without public read and write access.
@@ -52,7 +55,8 @@
  * @property {String} fileKey Key for your files
  * @property {Adapter<FilesAdapter>} filesAdapter Adapter module for the files sub-system
  * @property {FileUploadOptions} fileUpload Options for file uploads
- * @property {String} graphQLPath Mount path for the GraphQL endpoint, defaults to /graphql
+ * @property {String} graphQLPath The mount path for the GraphQL endpoint<br><br>⚠️ File upload inside the GraphQL mutation system requires Parse Server to be able to call itself by making requests to the URL set in `serverURL`.<br><br>Defaults is `/graphql`.
+ * @property {Boolean} graphQLPublicIntrospection Enable public introspection for the GraphQL endpoint, defaults to false
  * @property {String} graphQLSchema Full path to your GraphQL custom schema.graphql file
  * @property {String} host The host to serve ParseServer on, defaults to 0.0.0.0
  * @property {IdempotencyOptions} idempotencyOptions Options for request idempotency to deduplicate identical requests that may be caused by network issues. Caution, this is an experimental feature that may not be appropriate for production.
@@ -66,8 +70,9 @@
  * @property {String} logsFolder Folder for the logs (defaults to './logs'); set to null to disable file based logging
  * @property {String} maintenanceKey (Optional) The maintenance key is used for modifying internal and read-only fields of Parse Server.<br><br>⚠️ This key is not intended to be used as part of a regular operation of Parse Server. This key is intended to conduct out-of-band changes such as one-time migrations or data correction tasks. Internal fields are not officially documented and may change at any time without publication in release changelogs. We strongly advice not to rely on internal fields as part of your regular operation and to investigate the implications of any planned changes *directly in the source code* of your current version of Parse Server.
  * @property {String[]} maintenanceKeyIps (Optional) Restricts the use of maintenance key permissions to a list of IP addresses or ranges.<br><br>This option accepts a list of single IP addresses, for example `['10.0.0.1', '10.0.0.2']`. You can also use CIDR notation to specify an IP address range, for example `['10.0.1.0/24']`.<br><br><b>Special scenarios:</b><br>- Setting an empty array `[]` means that the maintenance key cannot be used even in Parse Server Cloud Code. This value cannot be set via an environment variable as there is no way to pass an empty array to Parse Server via an environment variable.<br>- Setting `['0.0.0.0/0', '::0']` means to allow any IPv4 and IPv6 address to use the maintenance key and effectively disables the IP filter.<br><br><b>Considerations:</b><br>- IPv4 and IPv6 addresses are not compared against each other. Each IP version (IPv4 and IPv6) needs to be considered separately. For example, `['0.0.0.0/0']` allows any IPv4 address and blocks every IPv6 address. Conversely, `['::0']` allows any IPv6 address and blocks every IPv4 address.<br>- Keep in mind that the IP version in use depends on the network stack of the environment in which Parse Server runs. A local environment may use a different IP version than a remote environment. For example, it's possible that locally the value `['0.0.0.0/0']` allows the request IP because the environment is using IPv4, but when Parse Server is deployed remotely the request IP is blocked because the remote environment is using IPv6.<br>- When setting the option via an environment variable the notation is a comma-separated string, for example `"0.0.0.0/0,::0"`.<br>- IPv6 zone indices (`%` suffix) are not supported, for example `fe80::1%eth0`, `fe80::1%1` or `::1%lo`.<br><br>Defaults to `['127.0.0.1', '::1']` which means that only `localhost`, the server instance on which Parse Server runs, is allowed to use the maintenance key.
- * @property {String} masterKey Your Parse Master Key
+ * @property {Union} masterKey Your Parse Master Key
  * @property {String[]} masterKeyIps (Optional) Restricts the use of master key permissions to a list of IP addresses or ranges.<br><br>This option accepts a list of single IP addresses, for example `['10.0.0.1', '10.0.0.2']`. You can also use CIDR notation to specify an IP address range, for example `['10.0.1.0/24']`.<br><br><b>Special scenarios:</b><br>- Setting an empty array `[]` means that the master key cannot be used even in Parse Server Cloud Code. This value cannot be set via an environment variable as there is no way to pass an empty array to Parse Server via an environment variable.<br>- Setting `['0.0.0.0/0', '::0']` means to allow any IPv4 and IPv6 address to use the master key and effectively disables the IP filter.<br><br><b>Considerations:</b><br>- IPv4 and IPv6 addresses are not compared against each other. Each IP version (IPv4 and IPv6) needs to be considered separately. For example, `['0.0.0.0/0']` allows any IPv4 address and blocks every IPv6 address. Conversely, `['::0']` allows any IPv6 address and blocks every IPv4 address.<br>- Keep in mind that the IP version in use depends on the network stack of the environment in which Parse Server runs. A local environment may use a different IP version than a remote environment. For example, it's possible that locally the value `['0.0.0.0/0']` allows the request IP because the environment is using IPv4, but when Parse Server is deployed remotely the request IP is blocked because the remote environment is using IPv6.<br>- When setting the option via an environment variable the notation is a comma-separated string, for example `"0.0.0.0/0,::0"`.<br>- IPv6 zone indices (`%` suffix) are not supported, for example `fe80::1%eth0`, `fe80::1%1` or `::1%lo`.<br><br>Defaults to `['127.0.0.1', '::1']` which means that only `localhost`, the server instance on which Parse Server runs, is allowed to use the master key.
+ * @property {Number} masterKeyTtl (Optional) The duration in seconds for which the current `masterKey` is being used before it is requested again if `masterKey` is set to a function. If `masterKey` is not set to a function, this option has no effect. Default is `0`, which means the master key is requested by invoking the  `masterKey` function every time the master key is used internally by Parse Server.
  * @property {Number} maxLimit Max value for limit option on queries, defaults to unlimited
  * @property {Number|String} maxLogFiles Maximum number of logs to keep. If not set, no logs will be removed. This can be a number of files or number of days. If using days, add 'd' as the suffix. (default: null)
  * @property {String} maxUploadSize Max file size for uploads, defaults to 20mb
@@ -76,7 +81,7 @@
  * @property {String} mountPath Mount path for the server, defaults to /parse
  * @property {Boolean} mountPlayground Mounts the GraphQL Playground - never use this option in production
  * @property {Number} objectIdSize Sets the number of characters in generated object id's, default 10
- * @property {PagesOptions} pages The options for pages such as password reset and email verification. Caution, this is an experimental feature that may not be appropriate for production.
+ * @property {PagesOptions} pages The options for pages such as password reset and email verification.
  * @property {PasswordPolicyOptions} passwordPolicy The password policy for enforcing password related rules.
  * @property {String} playgroundPath Mount path for the GraphQL Playground, defaults to /playground
  * @property {Number} port The port to run the ParseServer, defaults to 1337.
@@ -84,10 +89,12 @@
  * @property {Boolean} preventLoginWithUnverifiedEmail Set to `true` to prevent a user from logging in if the email has not yet been verified and email verification is required.<br><br>Default is `false`.<br>Requires option `verifyUserEmails: true`.
  * @property {Boolean} preventSignupWithUnverifiedEmail If set to `true` it prevents a user from signing up if the email has not yet been verified and email verification is required. In that case the server responds to the sign-up with HTTP status 400 and a Parse Error 205 `EMAIL_NOT_FOUND`. If set to `false` the server responds with HTTP status 200, and client SDKs return an unauthenticated Parse User without session token. In that case subsequent requests fail until the user's email address is verified.<br><br>Default is `false`.<br>Requires option `verifyUserEmails: true`.
  * @property {ProtectedFields} protectedFields Protected fields that should be treated with extra security when fetching details.
- * @property {String} publicServerURL Public URL to your parse server with http:// or https://.
+ * @property {Union} publicServerURL Optional. The public URL to Parse Server. This URL will be used to reach Parse Server publicly for features like password reset and email verification links. The option can be set to a string or a function that can be asynchronously resolved. The returned URL string must start with `http://` or `https://`.
  * @property {Any} push Configuration for push, as stringified JSON. See http://docs.parseplatform.org/parse-server/guide/#push-notifications
  * @property {RateLimitOptions[]} rateLimit Options to limit repeated requests to Parse Server APIs. This can be used to protect sensitive endpoints such as `/requestPasswordReset` from brute-force attacks or Parse Server as a whole from denial-of-service (DoS) attacks.<br><br>ℹ️ Mind the following limitations:<br>- rate limits applied per IP address; this limits protection against distributed denial-of-service (DDoS) attacks where many requests are coming from various IP addresses<br>- if multiple Parse Server instances are behind a load balancer or ran in a cluster, each instance will calculate it's own request rates, independent from other instances; this limits the applicability of this feature when using a load balancer and another rate limiting solution that takes requests across all instances into account may be more suitable<br>- this feature provides basic protection against denial-of-service attacks, but a more sophisticated solution works earlier in the request flow and prevents a malicious requests to even reach a server instance; it's therefore recommended to implement a solution according to architecture and user case.
  * @property {String} readOnlyMasterKey Read-only key, which has the same capabilities as MasterKey without writes
+ * @property {RequestComplexityOptions} requestComplexity Options to limit the complexity of requests to prevent abuse. Each option can be set to `-1` to disable.
+ * @property {Function} requestContextMiddleware Options to customize the request context using inversion of control/dependency injection.
  * @property {RequestKeywordDenylist[]} requestKeywordDenylist An array of keys and values that are prohibited in database read and write requests to prevent potential security vulnerabilities. It is possible to specify only a key (`{"key":"..."}`), only a value (`{"value":"..."}`) or a key-value pair (`{"key":"...","value":"..."}`). The specification can use the following types: `boolean`, `numeric` or `string`, where `string` will be interpreted as a regex notation. Request data is deep-scanned for matching definitions to detect also any nested occurrences. Defaults are patterns that are likely to be used in malicious requests. Setting this option will override the default patterns.
  * @property {String} restAPIKey Key for REST calls
  * @property {Boolean} revokeSessionOnPasswordReset When a user changes their password, either through the reset password email or while logged in, all sessions are revoked if this is true. Set to false if you don't want to revoke sessions.
@@ -96,13 +103,14 @@
  * @property {SecurityOptions} security The security options to identify and report weak security settings.
  * @property {Boolean} sendUserEmailVerification Set to `false` to prevent sending of verification email. Supports a function with a return value of `true` or `false` for conditional email sending.<br><br>Default is `true`.<br>
  * @property {Function} serverCloseComplete Callback when server has closed
- * @property {String} serverURL URL to your parse server with http:// or https://.
+ * @property {String} serverURL The URL to Parse Server.<br><br>⚠️ Certain server features or adapters may require Parse Server to be able to call itself by making requests to the URL set in `serverURL`. If a feature requires this, it is mentioned in the documentation. In that case ensure that the URL is accessible from the server itself.
  * @property {Number} sessionLength Session duration, in seconds, defaults to 1 year
  * @property {Boolean} silent Disables console output
  * @property {Boolean} startLiveQueryServer Starts the liveQuery server
  * @property {Any} trustProxy The trust proxy settings. It is important to understand the exact setup of the reverse proxy, since this setting will trust values provided in the Parse Server API request. See the <a href="https://expressjs.com/en/guide/behind-proxies.html">express trust proxy settings</a> documentation. Defaults to `false`.
  * @property {String[]} userSensitiveFields Personally identifiable information fields in the user table the should be removed for non-authorized users. Deprecated @see protectedFields
  * @property {Boolean} verbose Set the logging to verbose
+ * @property {Boolean} verifyServerUrl Parse Server makes a HTTP request to the URL set in `serverURL` at the end of its launch routine to verify that the launch succeeded. If this option is set to `false`, the verification will be skipped. This can be useful in environments where the server URL is not accessible from the server itself, such as when running behind a firewall or in certain containerized environments.<br><br>⚠️ Server URL verification requires Parse Server to be able to call itself by making requests to the URL set in `serverURL`.<br><br>Default is `true`.
  * @property {Boolean} verifyUserEmails Set to `true` to require users to verify their email address to complete the sign-up process. Supports a function with a return value of `true` or `false` for conditional verification.<br><br>Default is `false`.
  * @property {String} webhookKey Key sent with outgoing webhook calls
  */
@@ -113,11 +121,21 @@
  * @property {Boolean} includeInternalRequests Optional, if `true` the rate limit will also apply to requests that are made in by Cloud Code, default is `false`. Note that a public Cloud Code function that triggers internal requests may circumvent rate limiting and be vulnerable to attacks.
  * @property {Boolean} includeMasterKey Optional, if `true` the rate limit will also apply to requests using the `masterKey`, default is `false`. Note that a public Cloud Code function that triggers internal requests using the `masterKey` may circumvent rate limiting and be vulnerable to attacks.
  * @property {String} redisUrl Optional, the URL of the Redis server to store rate limit data. This allows to rate limit requests for multiple servers by calculating the sum of all requests across all servers. This is useful if multiple servers are processing requests behind a load balancer. For example, the limit of 10 requests is reached if each of 2 servers processed 5 requests.
- * @property {Number} requestCount The number of requests that can be made per IP address within the time window set in `requestTimeWindow` before the rate limit is applied.
+ * @property {Number} requestCount The number of requests that can be made per IP address within the time window set in `requestTimeWindow` before the rate limit is applied. For batch requests, this also limits the number of sub-requests in a single batch that target this path; however, requests already consumed in the current time window are not counted against the batch, so the effective limit may be higher when combining individual and batch requests. Note that this is a basic server-level rate limit; for comprehensive protection, use a reverse proxy or WAF for rate limiting.
  * @property {String[]} requestMethods Optional, the HTTP request methods to which the rate limit should be applied, default is all methods.
  * @property {String} requestPath The path of the API route to be rate limited. Route paths, in combination with a request method, define the endpoints at which requests can be made. Route paths can be strings, string patterns, or regular expression. See: https://expressjs.com/en/guide/routing.html
  * @property {Number} requestTimeWindow The window of time in milliseconds within which the number of requests set in `requestCount` can be made before the rate limit is applied.
- * @property {String} zone The type of rate limit to apply. The following types are supported:<br><br>- `global`: rate limit based on the number of requests made by all users <br>- `ip`: rate limit based on the IP address of the request <br>- `user`: rate limit based on the user ID of the request <br>- `session`: rate limit based on the session token of the request <br><br><br>:default: 'ip'
+ * @property {String} zone The type of rate limit to apply. The following types are supported:<ul><li>`global`: rate limit based on the number of requests made by all users</li><li>`ip`: rate limit based on the IP address of the request</li><li>`user`: rate limit based on the user ID of the request</li><li>`session`: rate limit based on the session token of the request</li></ul>Default is `ip`.
+ */
+
+/**
+ * @interface RequestComplexityOptions
+ * @property {Number} graphQLDepth Maximum depth of GraphQL field selections. Set to `-1` to disable. Default is `-1`.
+ * @property {Number} graphQLFields Maximum number of field selections in a GraphQL query. Set to `-1` to disable. Default is `-1`.
+ * @property {Number} includeCount Maximum number of include paths in a single query. Set to `-1` to disable. Default is `-1`.
+ * @property {Number} includeDepth Maximum depth of include pointer chains (e.g. `a.b.c` = depth 3). Set to `-1` to disable. Default is `-1`.
+ * @property {Number} queryDepth Maximum nesting depth of `$or`, `$and`, `$nor` query operators. Set to `-1` to disable. Default is `-1`.
+ * @property {Number} subqueryDepth Maximum nesting depth of `$inQuery`, `$notInQuery`, `$select`, `$dontSelect` subqueries. Set to `-1` to disable. Default is `-1`.
  */
 
 /**
@@ -132,7 +150,7 @@
  * @property {PagesRoute[]} customRoutes The custom routes.
  * @property {PagesCustomUrlsOptions} customUrls The URLs to the custom pages.
  * @property {Boolean} enableLocalization Is true if pages should be localized; this has no effect on custom page redirects.
- * @property {Boolean} enableRouter Is true if the pages router should be enabled; this is required for any of the pages options to take effect. Caution, this is an experimental feature that may not be appropriate for production.
+ * @property {Boolean} enableRouter Is true if the pages router should be enabled; this is required for any of the pages options to take effect.
  * @property {Boolean} forceRedirect Is true if responses should always be redirects and never content, false if the response type should depend on the request type (GET request -> content response; POST request -> redirect response).
  * @property {String} localizationFallbackLocale The fallback locale for localization if no matching translation is provided for the given locale. This is only relevant when providing translation resources via JSON file.
  * @property {String} localizationJsonPath The path to the JSON file for localization; the translations will be used to fill template placeholders according to the locale.
@@ -180,6 +198,7 @@
  * @property {Adapter<PubSubAdapter>} pubSubAdapter LiveQuery pubsub adapter
  * @property {Any} redisOptions parse-server's LiveQuery redisOptions
  * @property {String} redisURL parse-server's LiveQuery redisURL
+ * @property {Number} regexTimeout Sets the maximum execution time in milliseconds for regular expression pattern matching in LiveQuery. This protects against Regular Expression Denial of Service (ReDoS) attacks where a malicious regex pattern could block the event loop. A regex that exceeds the timeout will be treated as non-matching.<br><br>The protection runs each regex evaluation in an isolated VM context with a timeout. This adds approximately 50 microseconds of overhead per regex evaluation. For most applications this is negligible, but it can add up if you have a very large number of LiveQuery subscriptions that use `$regex` on the same class. For example, 10,000 concurrent regex subscriptions would add approximately 500ms of processing time per object save event on that class.<br><br>Set to `0` to disable the timeout and use native regex evaluation without protection. Defaults to `100`.
  * @property {Adapter<WSSAdapter>} wssAdapter Adapter module for the WebSocketServer
  */
 
@@ -230,22 +249,85 @@
  * @property {Boolean} enableForAnonymousUser Is true if file upload should be allowed for anonymous users.
  * @property {Boolean} enableForAuthenticatedUser Is true if file upload should be allowed for authenticated users.
  * @property {Boolean} enableForPublic Is true if file upload should be allowed for anyone, regardless of user authentication.
- * @property {String[]} fileExtensions Sets the allowed file extensions for uploading files. The extension is defined as an array of file extensions, or a regex pattern.<br><br>It is recommended to restrict the file upload extensions as much as possible. HTML files are especially problematic as they may be used by an attacker who uploads a HTML form to look legitimate under your app's domain name, or to compromise the session token of another user via accessing the browser's local storage.<br><br>Defaults to `^(?!(h|H)(t|T)(m|M)(l|L)?$)` which allows any file extension except HTML files.
+ * @property {String[]} fileExtensions Sets the allowed file extensions for uploading files. The extension is defined as an array of file extensions, or a regex pattern.<br><br>It is recommended to only allow the file extensions that your app actually needs, rather than relying on blocking dangerous extensions. This allowlist approach is more secure because new dangerous file extensions may emerge that are not covered by the default blocklist.<br><br>The default blocks the most common file extensions that are known to be rendered as active content by web browsers, such as HTML, SVG, and XML files, which may be used by an attacker to compromise the session token of another user via accessing the browser's local storage. The blocked extensions are: `html`, `htm`, `shtml`, `xhtml`, `xhtml+xml`, `xht`, `svg`, `svgz`, `svg+xml`, `xml`, `xsl`, `xslt`, `xslt+xml`, `xsd`, `rng`, `rdf`, `rdf+xml`, `owl`, `mathml`, `mathml+xml`.<br><br>Defaults to `["^(?!([xXsS]?[hH][tT][mM][lL]?(\\+[xX][mM][lL])?|[xX][hH][tT]|[sS][vV][gG]([zZ]|\\+[xX][mM][lL])?|[xX][mM][lL]|[xX][sS][lL][tT]?(\\+[xX][mM][lL])?|[xX][sS][dD]|[rR][nN][gG]|[rR][dD][fF](\\+[xX][mM][lL])?|[oO][wW][lL]|[mM][aA][tT][hH][mM][lL](\\+[xX][mM][lL])?)$)"]`.
+ */
+
+/**
+ * @interface LogLevel
+ * @property {StringLiteral} debug Debug level
+ * @property {StringLiteral} error Error level - highest priority
+ * @property {StringLiteral} info Info level - default
+ * @property {StringLiteral} silly Silly level - lowest priority
+ * @property {StringLiteral} verbose Verbose level
+ * @property {StringLiteral} warn Warning level
+ */
+
+/**
+ * @interface LogClientEvent
+ * @property {String[]} keys Optional array of dot-notation paths to extract specific data from the event object. If not provided or empty, the entire event object will be logged.
+ * @property {String} logLevel The log level to use for this event. See [LogLevel](LogLevel.html) for available values. Defaults to `'info'`.
+ * @property {String} name The MongoDB driver event name to listen for. See the [MongoDB driver events documentation](https://www.mongodb.com/docs/drivers/node/current/fundamentals/monitoring/) for available events.
  */
 
 /**
  * @interface DatabaseOptions
+ * @property {Boolean} allowPublicExplain Set to `true` to allow `Parse.Query.explain` without master key.<br><br>⚠️ Enabling this option may expose sensitive query performance data to unauthorized users and could potentially be exploited for malicious purposes.
+ * @property {String} appName The MongoDB driver option to specify the name of the application that created this MongoClient instance.
+ * @property {String} authMechanism The MongoDB driver option to specify the authentication mechanism that MongoDB will use to authenticate the connection.
+ * @property {Any} authMechanismProperties The MongoDB driver option to specify properties for the specified authMechanism as a comma-separated list of colon-separated key-value pairs.
+ * @property {String} authSource The MongoDB driver option to specify the database name associated with the user's credentials.
  * @property {Boolean} autoSelectFamily The MongoDB driver option to set whether the socket attempts to connect to IPv6 and IPv4 addresses until a connection is established. If available, the driver will select the first IPv6 address.
  * @property {Number} autoSelectFamilyAttemptTimeout The MongoDB driver option to specify the amount of time in milliseconds to wait for a connection attempt to finish before trying the next address when using the autoSelectFamily option. If set to a positive integer less than 10, the value 10 is used instead.
+ * @property {Union} compressors The MongoDB driver option to specify an array or comma-delimited string of compressors to enable network compression for communication between this client and a mongod/mongos instance.
  * @property {Number} connectTimeoutMS The MongoDB driver option to specify the amount of time, in milliseconds, to wait to establish a single TCP socket connection to the server before raising an error. Specifying 0 disables the connection timeout.
+ * @property {Boolean} createIndexAuthDataUniqueness Set to `true` to automatically create unique indexes on the authData fields of the _User collection for each configured auth provider on server start, including `anonymous` when anonymous users are enabled. These indexes prevent race conditions during concurrent signups with the same authData. Set to `false` to skip index creation. Default is `true`.<br><br>⚠️ When setting this option to `false` to manually create the indexes, keep in mind that the otherwise automatically created indexes may change in the future to be optimized for the internal usage by Parse Server.
+ * @property {Boolean} createIndexRoleName Set to `true` to automatically create a unique index on the name field of the _Role collection on server start. Set to `false` to skip index creation. Default is `true`.<br><br>⚠️ When setting this option to `false` to manually create the index, keep in mind that the otherwise automatically created index may change in the future to be optimized for the internal usage by Parse Server.
+ * @property {Boolean} createIndexUserEmail Set to `true` to automatically create indexes on the email field of the _User collection on server start. Set to `false` to skip index creation. Default is `true`.<br><br>⚠️ When setting this option to `false` to manually create the index, keep in mind that the otherwise automatically created index may change in the future to be optimized for the internal usage by Parse Server.
+ * @property {Boolean} createIndexUserEmailCaseInsensitive Set to `true` to automatically create a case-insensitive index on the email field of the _User collection on server start. Set to `false` to skip index creation. Default is `true`.<br><br>⚠️ When setting this option to `false` to manually create the index, keep in mind that the otherwise automatically created index may change in the future to be optimized for the internal usage by Parse Server.
+ * @property {Boolean} createIndexUserEmailVerifyToken Set to `true` to automatically create an index on the _email_verify_token field of the _User collection on server start. Set to `false` to skip index creation. Default is `true`.<br><br>⚠️ When setting this option to `false` to manually create the index, keep in mind that the otherwise automatically created index may change in the future to be optimized for the internal usage by Parse Server.
+ * @property {Boolean} createIndexUserPasswordResetToken Set to `true` to automatically create an index on the _perishable_token field of the _User collection on server start. Set to `false` to skip index creation. Default is `true`.<br><br>⚠️ When setting this option to `false` to manually create the index, keep in mind that the otherwise automatically created index may change in the future to be optimized for the internal usage by Parse Server.
+ * @property {Boolean} createIndexUserUsername Set to `true` to automatically create indexes on the username field of the _User collection on server start. Set to `false` to skip index creation. Default is `true`.<br><br>⚠️ When setting this option to `false` to manually create the index, keep in mind that the otherwise automatically created index may change in the future to be optimized for the internal usage by Parse Server.
+ * @property {Boolean} createIndexUserUsernameCaseInsensitive Set to `true` to automatically create a case-insensitive index on the username field of the _User collection on server start. Set to `false` to skip index creation. Default is `true`.<br><br>⚠️ When setting this option to `false` to manually create the index, keep in mind that the otherwise automatically created index may change in the future to be optimized for the internal usage by Parse Server.
+ * @property {Boolean} directConnection The MongoDB driver option to force a Single topology type with a connection string containing one host.
+ * @property {Boolean} disableIndexFieldValidation Set to `true` to disable validation of index fields. When disabled, indexes can be created even if the fields do not exist in the schema. This can be useful when creating indexes on fields that will be added later.
  * @property {Boolean} enableSchemaHooks Enables database real-time hooks to update single schema cache. Set to `true` if using multiple Parse Servers instances connected to the same database. Failing to do so will cause a schema change to not propagate to all instances and re-syncing will only happen when the instances restart. To use this feature with MongoDB, a replica set cluster with [change stream](https://docs.mongodb.com/manual/changeStreams/#availability) support is required.
+ * @property {Boolean} forceServerObjectId The MongoDB driver option to force server to assign _id values instead of driver.
+ * @property {Number} heartbeatFrequencyMS The MongoDB driver option to specify the frequency in milliseconds at which the driver checks the state of the MongoDB deployment.
+ * @property {Boolean} loadBalanced The MongoDB driver option to instruct the driver it is connecting to a load balancer fronting a mongos like service.
+ * @property {Number} localThresholdMS The MongoDB driver option to specify the size (in milliseconds) of the latency window for selecting among multiple suitable MongoDB instances.
+ * @property {LogClientEvent[]} logClientEvents An array of MongoDB client event configurations to enable logging of specific events.
+ * @property {Number} maxConnecting The MongoDB driver option to specify the maximum number of connections that may be in the process of being established concurrently by the connection pool.
+ * @property {Number} maxIdleTimeMS The MongoDB driver option to specify the amount of time in milliseconds that a connection can remain idle in the connection pool before being removed and closed.
  * @property {Number} maxPoolSize The MongoDB driver option to set the maximum number of opened, cached, ready-to-use database connections maintained by the driver.
  * @property {Number} maxStalenessSeconds The MongoDB driver option to set the maximum replication lag for reads from secondary nodes.
  * @property {Number} maxTimeMS The MongoDB driver option to set a cumulative time limit in milliseconds for processing operations on a cursor.
  * @property {Number} minPoolSize The MongoDB driver option to set the minimum number of opened, cached, ready-to-use database connections maintained by the driver.
+ * @property {String} proxyHost The MongoDB driver option to configure a Socks5 proxy host used for creating TCP connections.
+ * @property {String} proxyPassword The MongoDB driver option to configure a Socks5 proxy password when the proxy requires username/password authentication.
+ * @property {Number} proxyPort The MongoDB driver option to configure a Socks5 proxy port used for creating TCP connections.
+ * @property {String} proxyUsername The MongoDB driver option to configure a Socks5 proxy username when the proxy requires username/password authentication.
+ * @property {String} readConcernLevel The MongoDB driver option to specify the level of isolation.
+ * @property {String} readPreference The MongoDB driver option to specify the read preferences for this connection.
+ * @property {Any[]} readPreferenceTags The MongoDB driver option to specify the tags document as a comma-separated list of colon-separated key-value pairs.
+ * @property {String} replicaSet The MongoDB driver option to specify the name of the replica set, if the mongod is a member of a replica set.
+ * @property {Boolean} retryReads The MongoDB driver option to enable retryable reads.
  * @property {Boolean} retryWrites The MongoDB driver option to set whether to retry failed writes.
  * @property {Number} schemaCacheTtl The duration in seconds after which the schema cache expires and will be refetched from the database. Use this option if using multiple Parse Servers instances connected to the same database. A low duration will cause the schema cache to be updated too often, causing unnecessary database reads. A high duration will cause the schema to be updated too rarely, increasing the time required until schema changes propagate to all server instances. This feature can be used as an alternative or in conjunction with the option `enableSchemaHooks`. Default is infinite which means the schema cache never expires.
+ * @property {String} serverMonitoringMode The MongoDB driver option to instruct the driver monitors to use a specific monitoring mode.
+ * @property {Number} serverSelectionTimeoutMS The MongoDB driver option to specify the amount of time in milliseconds for a server to be considered suitable for selection.
  * @property {Number} socketTimeoutMS The MongoDB driver option to specify the amount of time, in milliseconds, spent attempting to send or receive on a socket before timing out. Specifying 0 means no timeout.
+ * @property {Number} srvMaxHosts The MongoDB driver option to specify the maximum number of hosts to connect to when using an srv connection string, a setting of 0 means unlimited hosts.
+ * @property {String} srvServiceName The MongoDB driver option to modify the srv URI service name.
+ * @property {Boolean} ssl The MongoDB driver option to enable or disable TLS/SSL for the connection (equivalent to tls option).
+ * @property {Boolean} tls The MongoDB driver option to enable or disable TLS/SSL for the connection.
+ * @property {Boolean} tlsAllowInvalidCertificates The MongoDB driver option to bypass validation of the certificates presented by the mongod/mongos instance.
+ * @property {Boolean} tlsAllowInvalidHostnames The MongoDB driver option to disable hostname validation of the certificate presented by the mongod/mongos instance.
+ * @property {String} tlsCAFile The MongoDB driver option to specify the location of a local .pem file that contains the root certificate chain from the Certificate Authority.
+ * @property {String} tlsCertificateKeyFile The MongoDB driver option to specify the location of a local .pem file that contains the client's TLS/SSL certificate and key.
+ * @property {String} tlsCertificateKeyFilePassword The MongoDB driver option to specify the password to decrypt the tlsCertificateKeyFile.
+ * @property {Boolean} tlsInsecure The MongoDB driver option to disable various certificate validations.
+ * @property {Number} waitQueueTimeoutMS The MongoDB driver option to specify the maximum time in milliseconds that a thread can wait for a connection to become available.
+ * @property {Number} zlibCompressionLevel The MongoDB driver option to specify the compression level if using zlib for network compression (0-9).
  */
 
 /**
@@ -255,9 +337,9 @@
 
 /**
  * @interface LogLevels
- * @property {String} cloudFunctionError Log level used by the Cloud Code Functions on error. Default is `error`.
- * @property {String} cloudFunctionSuccess Log level used by the Cloud Code Functions on success. Default is `info`.
- * @property {String} triggerAfter Log level used by the Cloud Code Triggers `afterSave`, `afterDelete`, `afterFind`, `afterLogout`. Default is `info`.
- * @property {String} triggerBeforeError Log level used by the Cloud Code Triggers `beforeSave`, `beforeDelete`, `beforeFind`, `beforeLogin` on error. Default is `error`.
- * @property {String} triggerBeforeSuccess Log level used by the Cloud Code Triggers `beforeSave`, `beforeDelete`, `beforeFind`, `beforeLogin` on success. Default is `info`.
+ * @property {String} cloudFunctionError Log level used by the Cloud Code Functions on error. Default is `error`. See [LogLevel](LogLevel.html) for available values.
+ * @property {String} cloudFunctionSuccess Log level used by the Cloud Code Functions on success. Default is `info`. See [LogLevel](LogLevel.html) for available values.
+ * @property {String} triggerAfter Log level used by the Cloud Code Triggers `afterSave`, `afterDelete`, `afterFind`, `afterLogout`. Default is `info`. See [LogLevel](LogLevel.html) for available values.
+ * @property {String} triggerBeforeError Log level used by the Cloud Code Triggers `beforeSave`, `beforeDelete`, `beforeFind`, `beforeLogin` on error. Default is `error`. See [LogLevel](LogLevel.html) for available values.
+ * @property {String} triggerBeforeSuccess Log level used by the Cloud Code Triggers `beforeSave`, `beforeDelete`, `beforeFind`, `beforeLogin` on success. Default is `info`. See [LogLevel](LogLevel.html) for available values.
  */

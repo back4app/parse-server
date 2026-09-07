@@ -127,6 +127,12 @@ const emptyCLPS = Object.freeze({
 });
 
 const defaultCLPS = Object.freeze({
+  ACL: {
+    '*': {
+      read: true,
+      write: true,
+    },
+  },
   find: { '*': true },
   get: { '*': true },
   count: { '*': true },
@@ -189,9 +195,7 @@ const handleDotFields = object => {
       if (value && value.__op === 'Delete') {
         value = undefined;
       }
-      /* eslint-disable no-cond-assign */
       while ((next = components.shift())) {
-        /* eslint-enable no-cond-assign */
         currentObj[next] = currentObj[next] || {};
         if (components.length === 0) {
           currentObj[next] = value;
@@ -204,27 +208,35 @@ const handleDotFields = object => {
   return object;
 };
 
+const escapeSqlString = value => value.replace(/'/g, "''");
+
 const transformDotFieldToComponents = fieldName => {
   return fieldName.split('.').map((cmpt, index) => {
     if (index === 0) {
-      return `"${cmpt}"`;
+      return `"${cmpt.replace(/"/g, '""')}"`;
     }
     if (isArrayIndex(cmpt)) {
       return Number(cmpt);
     } else {
-      return `'${cmpt}'`;
+      return `'${escapeSqlString(cmpt)}'`;
     }
   });
 };
 
 const transformDotField = fieldName => {
   if (fieldName.indexOf('.') === -1) {
-    return `"${fieldName}"`;
+    return `"${fieldName.replace(/"/g, '""')}"`;
   }
   const components = transformDotFieldToComponents(fieldName);
   let name = components.slice(0, components.length - 1).join('->');
   name += '->>' + components[components.length - 1];
   return name;
+};
+
+const validateAggregateFieldName = name => {
+  if (typeof name !== 'string' || !name.match(/^[a-zA-Z][a-zA-Z0-9_]*$/)) {
+    throw new Parse.Error(Parse.Error.INVALID_KEY_NAME, `Invalid field name: ${name}`);
+  }
 };
 
 const transformAggregateField = fieldName => {
@@ -237,7 +249,12 @@ const transformAggregateField = fieldName => {
   if (fieldName === '$_updated_at') {
     return 'updatedAt';
   }
-  return fieldName.substring(1);
+  if (!fieldName.startsWith('$')) {
+    throw new Parse.Error(Parse.Error.INVALID_KEY_NAME, `Invalid field name: ${fieldName}`);
+  }
+  const name = fieldName.substring(1);
+  validateAggregateFieldName(name);
+  return name;
 };
 
 const validateKeys = object => {
@@ -321,6 +338,14 @@ const buildWhereClause = ({ schema, query, index, caseInsensitive }): WhereClaus
         } else if (typeof fieldValue !== 'object') {
           patterns.push(`$${index}:raw = $${index + 1}::text`);
           values.push(name, fieldValue);
+          index += 2;
+        } else if (
+          typeof fieldValue === 'object' &&
+          !Object.keys(fieldValue).some(key => key.startsWith('$'))
+        ) {
+          name = transformDotFieldToComponents(fieldName).join('->');
+          patterns.push(`($${index}:raw)::jsonb = $${index + 1}::jsonb`);
+          values.push(name, JSON.stringify(fieldValue));
           index += 2;
         }
       }
@@ -623,13 +648,11 @@ const buildWhereClause = ({ schema, query, index, caseInsensitive }): WhereClaus
       const distance = fieldValue.$maxDistance;
       const distanceInKM = distance * 6371 * 1000;
       patterns.push(
-        `ST_DistanceSphere($${index}:name::geometry, POINT($${index + 1}, $${
-          index + 2
+        `ST_DistanceSphere($${index}:name::geometry, POINT($${index + 1}, $${index + 2
         })::geometry) <= $${index + 3}`
       );
       sorts.push(
-        `ST_DistanceSphere($${index}:name::geometry, POINT($${index + 1}, $${
-          index + 2
+        `ST_DistanceSphere($${index}:name::geometry, POINT($${index + 1}, $${index + 2
         })::geometry) ASC`
       );
       values.push(fieldName, point.longitude, point.latitude, distanceInKM);
@@ -677,8 +700,7 @@ const buildWhereClause = ({ schema, query, index, caseInsensitive }): WhereClaus
       }
       const distanceInKM = distance * 6371 * 1000;
       patterns.push(
-        `ST_DistanceSphere($${index}:name::geometry, POINT($${index + 1}, $${
-          index + 2
+        `ST_DistanceSphere($${index}:name::geometry, POINT($${index + 1}, $${index + 2
         })::geometry) <= $${index + 3}`
       );
       values.push(fieldName, point.longitude, point.latitude, distanceInKM);
@@ -757,11 +779,16 @@ const buildWhereClause = ({ schema, query, index, caseInsensitive }): WhereClaus
         }
       }
 
-      const name = transformDotField(fieldName);
       regex = processRegexPattern(regex);
 
-      patterns.push(`$${index}:raw ${operator} '$${index + 1}:raw'`);
-      values.push(name, regex);
+      if (fieldName.indexOf('.') >= 0) {
+        const name = transformDotField(fieldName);
+        patterns.push(`$${index}:raw ${operator} '$${index + 1}:raw'`);
+        values.push(name, regex);
+      } else {
+        patterns.push(`$${index}:name ${operator} '$${index + 1}:raw'`);
+        values.push(fieldName, regex);
+      }
       index += 2;
     }
 
@@ -819,6 +846,7 @@ const buildWhereClause = ({ schema, query, index, caseInsensitive }): WhereClaus
             if (parserResult.status === 'success') {
               postgresValue = toPostgresValue(parserResult.result);
             } else {
+              // eslint-disable-next-line no-console
               console.error('Error while parsing relative date', parserResult);
               throw new Parse.Error(
                 Parse.Error.INVALID_JSON,
@@ -857,19 +885,22 @@ export class PostgresStorageAdapter implements StorageAdapter {
   _stream: any;
   _uuid: any;
   schemaCacheTtl: ?number;
+  disableIndexFieldValidation: boolean;
 
   constructor({ uri, collectionPrefix = '', databaseOptions = {} }: any) {
     const options = { ...databaseOptions };
     this._collectionPrefix = collectionPrefix;
     this.enableSchemaHooks = !!databaseOptions.enableSchemaHooks;
+    this.disableIndexFieldValidation = !!databaseOptions.disableIndexFieldValidation;
+
     this.schemaCacheTtl = databaseOptions.schemaCacheTtl;
-    for (const key of ['enableSchemaHooks', 'schemaCacheTtl']) {
+    for (const key of ['enableSchemaHooks', 'schemaCacheTtl', 'disableIndexFieldValidation']) {
       delete options[key];
     }
 
     const { client, pgp } = createClient(uri, options);
     this._client = client;
-    this._onchange = () => {};
+    this._onchange = () => { };
     this._pgp = pgp;
     this._uuid = uuidv4();
     this.canSortOnJoinTables = false;
@@ -917,6 +948,7 @@ export class PostgresStorageAdapter implements StorageAdapter {
       this._stream
         .none('NOTIFY $1~, $2', ['schema.change', { senderId: this._uuid }])
         .catch(error => {
+          // eslint-disable-next-line no-console
           console.log('Failed to Notify:', error); // unlikely to ever happen
         });
     }
@@ -985,7 +1017,10 @@ export class PostgresStorageAdapter implements StorageAdapter {
         delete existingIndexes[name];
       } else {
         Object.keys(field).forEach(key => {
-          if (!Object.prototype.hasOwnProperty.call(fields, key)) {
+          if (
+            !this.disableIndexFieldValidation &&
+            !Object.prototype.hasOwnProperty.call(fields, key)
+          ) {
             throw new Parse.Error(
               Parse.Error.INVALID_QUERY,
               `Field ${key} does not exist, cannot add index.`
@@ -1000,8 +1035,22 @@ export class PostgresStorageAdapter implements StorageAdapter {
       }
     });
     await conn.tx('set-indexes-with-schema-format', async t => {
-      if (insertedIndexes.length > 0) {
-        await self.createIndexes(className, insertedIndexes, t);
+      try {
+        if (insertedIndexes.length > 0) {
+          await self.createIndexes(className, insertedIndexes, t);
+        }
+      } catch (e) {
+        // pg-promise use Batch error see https://github.com/vitaly-t/spex/blob/e572030f261be1a8e9341fc6f637e36ad07f5231/src/errors/batch.js#L59
+        const columnDoesNotExistError = e.getErrors && e.getErrors()[0] && e.getErrors()[0].code === '42703';
+        // Specific case when the column does not exist
+        if (columnDoesNotExistError) {
+          // If the disableIndexFieldValidation is true, we should ignore the error
+          if (!this.disableIndexFieldValidation) {
+            throw e;
+          }
+        } else {
+          throw e;
+        }
       }
       if (deletedIndexes.length > 0) {
         await self.dropIndexes(className, deletedIndexes, t);
@@ -1456,9 +1505,15 @@ export class PostgresStorageAdapter implements StorageAdapter {
           );
           err.underlyingError = error;
           if (error.constraint) {
-            const matches = error.constraint.match(/unique_([a-zA-Z]+)/);
-            if (matches && Array.isArray(matches)) {
-              err.userInfo = { duplicated_field: matches[1] };
+            // Check for authData unique index violations first
+            const authDataMatch = error.constraint.match(/_User_unique_authData_([a-zA-Z0-9_]+)_id/);
+            if (authDataMatch) {
+              err.userInfo = { duplicated_field: `_auth_data_${authDataMatch[1]}` };
+            } else {
+              const matches = error.constraint.match(/unique_([a-zA-Z]+)/);
+              if (matches && Array.isArray(matches)) {
+                err.userInfo = { duplicated_field: matches[1] };
+              }
             }
           }
           error = err;
@@ -1619,16 +1674,14 @@ export class PostgresStorageAdapter implements StorageAdapter {
         index += 2;
       } else if (fieldValue.__op === 'Remove') {
         updatePatterns.push(
-          `$${index}:name = array_remove(COALESCE($${index}:name, '[]'::jsonb), $${
-            index + 1
+          `$${index}:name = array_remove(COALESCE($${index}:name, '[]'::jsonb), $${index + 1
           }::jsonb)`
         );
         values.push(fieldName, JSON.stringify(fieldValue.objects));
         index += 2;
       } else if (fieldValue.__op === 'AddUnique') {
         updatePatterns.push(
-          `$${index}:name = array_add_unique(COALESCE($${index}:name, '[]'::jsonb), $${
-            index + 1
+          `$${index}:name = array_add_unique(COALESCE($${index}:name, '[]'::jsonb), $${index + 1
           }::jsonb)`
         );
         values.push(fieldName, JSON.stringify(fieldValue.objects));
@@ -1700,13 +1753,20 @@ export class PostgresStorageAdapter implements StorageAdapter {
           .map(k => k.split('.')[1]);
 
         let incrementPatterns = '';
+        const incrementValues = [];
         if (keysToIncrement.length > 0) {
           incrementPatterns =
             ' || ' +
             keysToIncrement
               .map(c => {
                 const amount = fieldValue[c].amount;
-                return `CONCAT('{"${c}":', COALESCE($${index}:name->>'${c}','0')::int + ${amount}, '}')::jsonb`;
+                if (typeof amount !== 'number') {
+                  throw new Parse.Error(Parse.Error.INVALID_JSON, 'incrementing must provide a number');
+                }
+                incrementValues.push(amount);
+                const amountIndex = index + incrementValues.length;
+                const safeName = escapeSqlString(c);
+                return `CONCAT('{"${safeName}":', COALESCE($${index}:name->>'${safeName}','0')::int + $${amountIndex}, '}')::jsonb`;
               })
               .join(' || ');
           // Strip the keys
@@ -1729,7 +1789,7 @@ export class PostgresStorageAdapter implements StorageAdapter {
           .map(k => k.split('.')[1]);
 
         const deletePatterns = keysToDelete.reduce((p: string, c: string, i: number) => {
-          return p + ` - '$${index + 1 + i}:value'`;
+          return p + ` - '$${index + 1 + incrementValues.length + i}:value'`;
         }, '');
         // Override Object
         let updateObject = "'{}'::jsonb";
@@ -1739,12 +1799,11 @@ export class PostgresStorageAdapter implements StorageAdapter {
           updateObject = `COALESCE($${index}:name, '{}'::jsonb)`;
         }
         updatePatterns.push(
-          `$${index}:name = (${updateObject} ${deletePatterns} ${incrementPatterns} || $${
-            index + 1 + keysToDelete.length
+          `$${index}:name = (${updateObject} ${deletePatterns} ${incrementPatterns} || $${index + 1 + incrementValues.length + keysToDelete.length
           }::jsonb )`
         );
-        values.push(fieldName, ...keysToDelete, JSON.stringify(fieldValue));
-        index += 2 + keysToDelete.length;
+        values.push(fieldName, ...incrementValues, ...keysToDelete, JSON.stringify(fieldValue));
+        index += 2 + incrementValues.length + keysToDelete.length;
       } else if (
         Array.isArray(fieldValue) &&
         schema.fields[fieldName] &&
@@ -1781,7 +1840,30 @@ export class PostgresStorageAdapter implements StorageAdapter {
 
     const whereClause = where.pattern.length > 0 ? `WHERE ${where.pattern}` : '';
     const qs = `UPDATE $1:name SET ${updatePatterns.join()} ${whereClause} RETURNING *`;
-    const promise = (transactionalSession ? transactionalSession.t : this._client).any(qs, values);
+    const promise = (transactionalSession ? transactionalSession.t : this._client)
+      .any(qs, values)
+      .catch(error => {
+        if (error.code === PostgresUniqueIndexViolationError) {
+          const err = new Parse.Error(
+            Parse.Error.DUPLICATE_VALUE,
+            'A duplicate value for a field with unique values was provided'
+          );
+          err.underlyingError = error;
+          if (error.constraint) {
+            const authDataMatch = error.constraint.match(/_User_unique_authData_([a-zA-Z0-9_]+)_id/);
+            if (authDataMatch) {
+              err.userInfo = { duplicated_field: `_auth_data_${authDataMatch[1]}` };
+            } else {
+              const matches = error.constraint.match(/unique_([a-zA-Z]+)/);
+              if (matches && Array.isArray(matches)) {
+                err.userInfo = { duplicated_field: matches[1] };
+              }
+            }
+          }
+          throw err;
+        }
+        throw error;
+      });
     if (transactionalSession) {
       transactionalSession.batch.push(promise);
     }
@@ -2024,6 +2106,31 @@ export class PostgresStorageAdapter implements StorageAdapter {
     });
   }
 
+  // Creates a unique index on authData-><provider>->>'id' to prevent
+  // race conditions during concurrent signups with the same authData.
+  async ensureAuthDataUniqueness(provider: string) {
+    const indexName = `_User_unique_authData_${provider}_id`;
+    const qs = `CREATE UNIQUE INDEX IF NOT EXISTS $1:name ON "_User" (("authData"->$2::text->>'id')) WHERE "authData"->$2::text->>'id' IS NOT NULL`;
+    await this._client.none(qs, [indexName, provider]).catch(error => {
+      if (
+        error.code === PostgresDuplicateRelationError &&
+        error.message.includes(indexName)
+      ) {
+        // Index already exists. Ignore error.
+      } else if (
+        error.code === PostgresUniqueIndexViolationError &&
+        error.message.includes(indexName)
+      ) {
+        throw new Parse.Error(
+          Parse.Error.DUPLICATE_VALUE,
+          'Tried to ensure field uniqueness for a class that already has duplicates.'
+        );
+      } else {
+        throw error;
+      }
+    });
+  }
+
   // Executes a count.
   async count(
     className: string,
@@ -2069,12 +2176,18 @@ export class PostgresStorageAdapter implements StorageAdapter {
 
   async distinct(className: string, schema: SchemaType, query: QueryType, fieldName: string) {
     debug('distinct');
+    const fieldSegments = fieldName.split('.');
+    for (const segment of fieldSegments) {
+      if (!segment.match(/^[a-zA-Z][a-zA-Z0-9_]*$/)) {
+        throw new Parse.Error(Parse.Error.INVALID_KEY_NAME, `Invalid field name: ${fieldName}`);
+      }
+    }
     let field = fieldName;
     let column = fieldName;
     const isNested = fieldName.indexOf('.') >= 0;
     if (isNested) {
       field = transformDotFieldToComponents(fieldName).join('->');
-      column = fieldName.split('.')[0];
+      column = fieldSegments[0];
     }
     const isArrayField =
       schema.fields && schema.fields[fieldName] && schema.fields[fieldName].type === 'Array';
@@ -2179,8 +2292,7 @@ export class PostgresStorageAdapter implements StorageAdapter {
                     groupByFields.push(`"${source}"`);
                   }
                   columns.push(
-                    `EXTRACT(${
-                      mongoAggregateToPostgres[operation]
+                    `EXTRACT(${mongoAggregateToPostgres[operation]
                     } FROM $${index}:name AT TIME ZONE 'UTC')::integer AS $${index + 1}:name`
                   );
                   values.push(source, alias);
@@ -2376,7 +2488,7 @@ export class PostgresStorageAdapter implements StorageAdapter {
         debug(`initializationDone in ${ctx.duration}`);
       })
       .catch(error => {
-        /* eslint-disable no-console */
+        // eslint-disable-next-line no-console
         console.error(error);
       });
   }
