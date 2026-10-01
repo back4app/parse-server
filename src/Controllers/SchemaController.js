@@ -711,24 +711,23 @@ const typeToString = (type: SchemaField | string): string => {
   }
   return `${type.type}`;
 };
-const ttl = {
-  date: Date.now(),
-  duration: undefined,
-};
-
 // Stores the entire schema of the app in a weird hybrid format somewhere between
 // the mongo format and the Parse format. Soon, this will all be Parse format.
 export default class SchemaController {
   _dbAdapter: StorageAdapter;
+  _appId: string;
+  _cache: any;
   schemaData: { [string]: Schema };
   reloadDataPromise: ?Promise<any>;
   protectedFields: any;
   userIdRegEx: RegExp;
 
-  constructor(databaseAdapter: StorageAdapter) {
+  constructor(databaseAdapter: StorageAdapter, appId?: string) {
     this._dbAdapter = databaseAdapter;
-    const config = Config.get(Parse.applicationId);
-    this.schemaData = new SchemaData(SchemaCache.all(), this.protectedFields);
+    this._appId = appId || Parse.applicationId;
+    this._cache = SchemaCache.for(databaseAdapter);
+    const config = Config.get(this._appId);
+    this.schemaData = new SchemaData(this._cache.all(), this.protectedFields);
     this.protectedFields = config.protectedFields;
 
     const customIds = config.allowCustomObjectId;
@@ -747,7 +746,8 @@ export default class SchemaController {
     if (this._dbAdapter.enableSchemaHooks) {
       return;
     }
-    const { date, duration } = ttl || {};
+    const ttl = this._cache.ttl;
+    const { date, duration } = ttl;
     if (!duration) {
       return;
     }
@@ -783,7 +783,7 @@ export default class SchemaController {
       return this.setAllClasses();
     }
     await this.reloadDataIfNeeded();
-    const cached = SchemaCache.all();
+    const cached = this._cache.all();
     if (cached && cached.length) {
       return Promise.resolve(cached);
     }
@@ -795,7 +795,7 @@ export default class SchemaController {
       .getAllClasses()
       .then(allSchemas => allSchemas.map(injectDefaultSchema))
       .then(allSchemas => {
-        SchemaCache.put(allSchemas);
+        this._cache.put(allSchemas);
         return allSchemas;
       });
   }
@@ -806,7 +806,7 @@ export default class SchemaController {
     options: LoadSchemaOptions = { clearCache: false }
   ): Promise<Schema> {
     if (options.clearCache) {
-      SchemaCache.clear();
+      this._cache.clear();
     }
     if (allowVolatileClasses && volatileClasses.indexOf(className) > -1) {
       const data = this.schemaData[className];
@@ -817,7 +817,7 @@ export default class SchemaController {
         indexes: data.indexes,
       });
     }
-    const cached = SchemaCache.get(className);
+    const cached = this._cache.get(className);
     if (cached && !options.clearCache) {
       return Promise.resolve(cached);
     }
@@ -1107,7 +1107,7 @@ export default class SchemaController {
     }
     validateCLP(perms, newSchema, this.userIdRegEx);
     await this._dbAdapter.setClassLevelPermissions(className, perms);
-    const cached = SchemaCache.get(className);
+    const cached = this._cache.get(className);
     if (cached) {
       cached.classLevelPermissions = perms;
     }
@@ -1284,7 +1284,7 @@ export default class SchemaController {
         });
       })
       .then(() => {
-        SchemaCache.clear();
+        this._cache.clear();
       });
   }
 
@@ -1395,7 +1395,8 @@ export default class SchemaController {
     className: string,
     aclGroup: string[],
     operation: string,
-    action?: string
+    action?: string,
+    appId?: string
   ) {
     if (SchemaController.testPermissions(classPermissions, aclGroup, operation)) {
       return Promise.resolve();
@@ -1405,7 +1406,7 @@ export default class SchemaController {
       return true;
     }
     const perms = classPermissions[operation];
-    const config = Config.get(Parse.applicationId)
+    const config = Config.get(appId || Parse.applicationId)
     // If only for authenticated users
     // make sure we have an aclGroup
     if (perms['requiresAuthentication']) {
@@ -1473,7 +1474,8 @@ export default class SchemaController {
       className,
       aclGroup,
       operation,
-      action
+      action,
+      this._appId
     );
   }
 
@@ -1501,9 +1503,13 @@ export default class SchemaController {
 }
 
 // Returns a promise for a new Schema.
-const load = (dbAdapter: StorageAdapter, options: any): Promise<SchemaController> => {
-  const schema = new SchemaController(dbAdapter);
-  ttl.duration = dbAdapter.schemaCacheTtl;
+const load = (
+  dbAdapter: StorageAdapter,
+  options: any,
+  appId?: string
+): Promise<SchemaController> => {
+  const schema = new SchemaController(dbAdapter, appId);
+  schema._cache.ttl.duration = dbAdapter.schemaCacheTtl;
   return schema.reloadData(options).then(() => schema);
 };
 

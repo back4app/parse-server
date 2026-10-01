@@ -50,7 +50,7 @@ export function getControllers(options: ParseServerOptions) {
     databaseController,
     hooksController,
     authDataManager,
-    schemaCache: SchemaCache,
+    schemaCache: SchemaCache.for(databaseController.adapter),
   };
 }
 

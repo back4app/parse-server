@@ -440,7 +440,7 @@ class DatabaseController {
     if (this.schemaPromise != null) {
       return this.schemaPromise;
     }
-    this.schemaPromise = SchemaController.load(this.adapter, options);
+    this.schemaPromise = SchemaController.load(this.adapter, options, this.options.appId);
     this.schemaPromise.then(
       () => delete this.schemaPromise,
       () => delete this.schemaPromise
@@ -937,7 +937,7 @@ class DatabaseController {
    */
   deleteEverything(fast: boolean = false): Promise<any> {
     this.schemaPromise = null;
-    SchemaCache.clear();
+    SchemaCache.for(this.adapter).clear();
     return this.adapter.deleteAllClasses(fast);
   }
 
@@ -1562,7 +1562,7 @@ class DatabaseController {
                   this.adapter.deleteClass(joinTableName(className, name))
                 )
               ).then(() => {
-                SchemaCache.del(className);
+                SchemaCache.for(this.adapter).del(className);
                 return schemaController.reloadData();
               });
             } else {

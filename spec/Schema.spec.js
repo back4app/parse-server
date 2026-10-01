@@ -898,6 +898,7 @@ describe('SchemaController', () => {
 
   it('creates non-custom classes which include relation field', async done => {
     await reconfigureServer();
+    config = Config.get('test');
     config.database
       .loadSchema()
       //as `_Role` is always created by default, we only get it here
