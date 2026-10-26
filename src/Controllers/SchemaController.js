@@ -1314,7 +1314,13 @@ export default class SchemaController {
         continue;
       }
       const expected = getType(object[fieldName]);
-      if (!expected) {
+      // A null value and a Delete op have no type, which skips enforceFieldExists and
+      // with it the rule that a dot notation key's parent must be an Object or Array
+      // field. A null value below a non-object field (e.g. a Pointer) is then written
+      // as a sub-document and corrupts the field, so still validate it as for a typed
+      // value. A Delete only removes a sub-path and is a no-op here.
+      const isNullDotNotationKey = object[fieldName] === null && fieldName.indexOf('.') > 0;
+      if (!expected && !isNullDotNotationKey) {
         continue;
       }
       if (fieldName === 'ACL') {
@@ -1389,6 +1395,70 @@ export default class SchemaController {
     return false;
   }
 
+  // The denial of an operation by the class-level permissions, or undefined if they let it pass
+  static permissionDenial(
+    classPermissions: ?any,
+    className: string,
+    aclGroup: string[],
+    operation: string,
+    action?: string
+  ): ?{ code: number, message: string } {
+    if (SchemaController.testPermissions(classPermissions, aclGroup, operation)) {
+      return;
+    }
+    const perms = classPermissions[operation];
+    // If only for authenticated users
+    // make sure we have an aclGroup
+    if (perms['requiresAuthentication']) {
+      // If aclGroup has * (public)
+      if (
+        !aclGroup ||
+        aclGroup.length == 0 ||
+        (aclGroup.indexOf('*') > -1 && aclGroup.length == 1)
+      ) {
+        return {
+          code: Parse.Error.OBJECT_NOT_FOUND,
+          message: 'Permission denied, user needs to be authenticated.',
+        };
+      }
+      // requiresAuthentication passed, just move forward
+      // probably would be wise at some point to rename to 'authenticatedUser'
+      return;
+    }
+    const forbidden = {
+      code: Parse.Error.OPERATION_FORBIDDEN,
+      message: `Permission denied for action ${operation} on class ${className}.`,
+    };
+
+    // No matching CLP, let's check the Pointer permissions
+    // And handle those later
+    const permissionField =
+      ['get', 'find', 'count'].indexOf(operation) > -1 ? 'readUserFields' : 'writeUserFields';
+
+    // Reject create when write lockdown
+    if (permissionField == 'writeUserFields' && operation == 'create') {
+      return forbidden;
+    }
+
+    // Process the readUserFields later
+    if (
+      Array.isArray(classPermissions[permissionField]) &&
+      classPermissions[permissionField].length > 0
+    ) {
+      return;
+    }
+
+    const pointerFields = classPermissions[operation].pointerFields;
+    if (Array.isArray(pointerFields) && pointerFields.length > 0) {
+      // any op except 'addField as part of create' is ok.
+      if (operation !== 'addField' || action === 'update') {
+        // We can allow adding field on update flow only.
+        return;
+      }
+    }
+    return forbidden;
+  }
+
   // Validates an operation passes class-level-permissions set in the schema
   static validatePermission(
     classPermissions: ?any,
@@ -1398,73 +1468,66 @@ export default class SchemaController {
     action?: string,
     appId?: string
   ) {
-    if (SchemaController.testPermissions(classPermissions, aclGroup, operation)) {
-      return Promise.resolve();
-    }
-
-    if (!classPermissions || !classPermissions[operation]) {
-      return true;
-    }
-    const perms = classPermissions[operation];
-    const config = Config.get(appId || Parse.applicationId)
-    // If only for authenticated users
-    // make sure we have an aclGroup
-    if (perms['requiresAuthentication']) {
-      // If aclGroup has * (public)
-      if (!aclGroup || aclGroup.length == 0) {
-        throw createSanitizedError(
-          Parse.Error.OBJECT_NOT_FOUND,
-          'Permission denied, user needs to be authenticated.',
-          config
-        );
-      } else if (aclGroup.indexOf('*') > -1 && aclGroup.length == 1) {
-        throw createSanitizedError(
-          Parse.Error.OBJECT_NOT_FOUND,
-          'Permission denied, user needs to be authenticated.',
-          config
-        );
-      }
-      // requiresAuthentication passed, just move forward
-      // probably would be wise at some point to rename to 'authenticatedUser'
-      return Promise.resolve();
-    }
-
-    // No matching CLP, let's check the Pointer permissions
-    // And handle those later
-    const permissionField =
-      ['get', 'find', 'count'].indexOf(operation) > -1 ? 'readUserFields' : 'writeUserFields';
-
-    // Reject create when write lockdown
-    if (permissionField == 'writeUserFields' && operation == 'create') {
+    const denial = SchemaController.permissionDenial(
+      classPermissions,
+      className,
+      aclGroup,
+      operation,
+      action
+    );
+    if (denial) {
       throw createSanitizedError(
-        Parse.Error.OPERATION_FORBIDDEN,
-        `Permission denied for action ${operation} on class ${className}.`,
-        config
+        denial.code,
+        denial.message,
+        Config.get(appId || Parse.applicationId)
       );
     }
+    return Promise.resolve();
+  }
 
-    // Process the readUserFields later
-    if (
-      Array.isArray(classPermissions[permissionField]) &&
-      classPermissions[permissionField].length > 0
-    ) {
-      return Promise.resolve();
+  // Tests that the pointer permissions of an operation let the user access the object
+  static testPointerPermissions(
+    classPermissions: ?any,
+    aclGroup: string[],
+    operation: string,
+    userId: ?string,
+    getValue: (field: string) => any
+  ): boolean {
+    if (!classPermissions) {
+      return true;
     }
-
-    const pointerFields = classPermissions[operation].pointerFields;
-    if (Array.isArray(pointerFields) && pointerFields.length > 0) {
-      // any op except 'addField as part of create' is ok.
-      if (operation !== 'addField' || action === 'update') {
-        // We can allow adding field on update flow only.
-        return Promise.resolve();
+    const permissionField =
+      ['get', 'find', 'count'].indexOf(operation) > -1 ? 'readUserFields' : 'writeUserFields';
+    const pointerFields = [];
+    if (classPermissions[operation]?.pointerFields) {
+      pointerFields.push(...classPermissions[operation].pointerFields);
+    }
+    if (Array.isArray(classPermissions[permissionField])) {
+      for (const field of classPermissions[permissionField]) {
+        if (!pointerFields.includes(field)) {
+          pointerFields.push(field);
+        }
       }
     }
-
-    throw createSanitizedError(
-      Parse.Error.OPERATION_FORBIDDEN,
-      `Permission denied for action ${operation} on class ${className}.`,
-      config
-    );
+    // A public or user-specific permission grants access without a pointer
+    if (
+      !pointerFields.length ||
+      SchemaController.testPermissions(classPermissions, aclGroup, operation)
+    ) {
+      return true;
+    }
+    if (!userId) {
+      return false;
+    }
+    // A pointer to the user, as a Parse.Object or in JSON
+    const pointsToUser = value =>
+      value instanceof Parse.Object
+        ? value.className === '_User' && value.id === userId
+        : value?.__type === 'Pointer' && value.className === '_User' && value.objectId === userId;
+    return pointerFields.some(field => {
+      const value = getValue(field);
+      return Array.isArray(value) ? value.some(pointsToUser) : pointsToUser(value);
+    });
   }
 
   // Validates an operation passes class-level-permissions set in the schema

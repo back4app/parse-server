@@ -15,6 +15,7 @@ function Auth({
   isMaster = false,
   isMaintenance = false,
   isReadOnly = false,
+  isLegacySession = false,
   user,
   installationId,
 }) {
@@ -25,6 +26,7 @@ function Auth({
   this.isMaintenance = isMaintenance;
   this.user = user;
   this.isReadOnly = isReadOnly;
+  this.isLegacySession = isLegacySession;
 
   // Assuming a users roles won't change during a single request, we'll
   // only load them once.
@@ -233,6 +235,7 @@ var getAuthForLegacySessionToken = async function ({ config, sessionToken, insta
     return new Auth({
       config,
       isMaster: false,
+      isLegacySession: true,
       installationId,
       user: userObject,
     });
@@ -423,6 +426,11 @@ const findUsersWithAuthData = async (config, authData, beforeFind) => {
   const queries = await Promise.all(
     providers.map(async provider => {
       const providerAuthData = authData[provider];
+
+      // Skip providers being unlinked (null value)
+      if (providerAuthData === null) {
+        return null;
+      }
 
       const validatorConfig = config.authDataManager.getValidatorForProvider(provider);
       // Skip database query for unconfigured providers to avoid unindexed collection scans;
